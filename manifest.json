@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "id": "supercleanse.vitals",
+  "name": "Vitals",
+  "version": "0.1.0",
+  "author": "Blair Williams",
+  "license": "MIT",
+  "description": "A compact multi-machine system monitor: CPU, memory and network for this machine and any others you can reach over SSH, in a narrow sidebar docked to a screen edge or in its own window. Agentless: nothing is installed on the remote machines. Works with Linux and macOS remotes.",
+  "homepage": "https://github.com/SuperCleanse/omarchy-vitals",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "VitalsService.qml",
+    "barWidget": "VitalsWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Vitals",
+    "description": "A pulse icon that shows or hides the Vitals sidebar: CPU, memory and network graphs for every machine you add, over SSH.",
+    "category": "System",
+    "aliases": [
+      "vitals",
+      "monitor",
+      "system-monitor",
+      "machines",
+      "servers",
+      "ssh",
+      "cpu",
+      "memory",
+      "network"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "mode": "dock",
+      "edge": "right",
+      "width": 200,
+      "screen": "",
+      "refreshSeconds": "2",
+      "historySeconds": 120,
+      "sampleWhileHidden": false,
+      "barReadout": "icon"
+    },
+    "schema": [
+      {
+        "key": "mode",
+        "type": "enum",
+        "label": "Display mode",
+        "description": "dock pins a sidebar to a screen edge and tiles windows beside it; window opens the same content as an ordinary window.",
+        "options": [
+          "dock",
+          "window"
+        ],
+        "defaultValue": "dock"
+      },
+      {
+        "key": "edge",
+        "type": "enum",
+        "label": "Dock edge",
+        "description": "Which screen edge the docked sidebar sits on.",
+        "options": [
+          "right",
+          "left"
+        ],
+        "defaultValue": "right"
+      },
+      {
+        "key": "width",
+        "type": "integer",
+        "label": "Width",
+        "description": "Sidebar and window width, in pixels.",
+        "min": 160,
+        "max": 360,
+        "step": 10,
+        "defaultValue": 200
+      },
+      {
+        "key": "screen",
+        "type": "string",
+        "label": "Dock screen",
+        "description": "Output name for the docked sidebar, such as DP-1 or eDP-1 (see hyprctl monitors). Empty lets the compositor choose, usually the focused screen.",
+        "defaultValue": ""
+      },
+      {
+        "key": "refreshSeconds",
+        "type": "enum",
+        "label": "Sample every (seconds)",
+        "description": "How often each machine reports. macOS machines round to whole seconds.",
+        "options": [
+          "1",
+          "2",
+          "3",
+          "5",
+          "10"
+        ],
+        "defaultValue": "2"
+      },
+      {
+        "key": "historySeconds",
+        "type": "integer",
+        "label": "History (seconds)",
+        "description": "How much history each machine keeps for its graphs.",
+        "min": 30,
+        "max": 900,
+        "step": 30,
+        "defaultValue": 120
+      },
+      {
+        "key": "sampleWhileHidden",
+        "type": "boolean",
+        "label": "Keep sampling while hidden",
+        "description": "Keep the SSH sessions open while the sidebar is hidden, so graphs have history when it opens and the bar icon can flag offline machines.",
+        "defaultValue": false
+      },
+      {
+        "key": "barReadout",
+        "type": "enum",
+        "label": "Bar readout",
+        "description": "icon shows just the pulse glyph; count adds online/total while sampling.",
+        "options": [
+          "icon",
+          "count"
+        ],
+        "defaultValue": "icon"
+      }
+    ]
+  }
+}
