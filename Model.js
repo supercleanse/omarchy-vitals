@@ -462,10 +462,7 @@ function unavailableReason(module, info) {
   if (module === "gpu") return "No GPU found"
   if (module === "battery") return "No battery"
   if (module === "disks") return "No disks found"
-  if (module === "sensors") {
-    if (info && info.os === "macos") return "Unavailable on macOS without a helper"
-    return "No sensors found"
-  }
+  if (module === "sensors") return "No sensors found"
   return ""
 }
 

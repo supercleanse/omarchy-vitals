@@ -45,7 +45,7 @@ function online(o) {
     gpus: (o.gpus || []).map(function(g) { return { id: g.id, name: g.name, vendor: g.vendor, util: g.util !== null } }),
     disks: o.disks || [],
     sensors: o.sensors || [],
-    sensorsNote: o.os === "macos" ? "CPU and GPU temperatures and fan speeds need root on macOS" : ""
+    sensorsNote: ""
   }
   var history = { cpuUser: user, cpuSys: sys, mem: mem, rx: rx, tx: tx, gpu: {}, gpuMem: {}, diskRead: {}, diskWrite: {}, battery: [] }
   var sample = {

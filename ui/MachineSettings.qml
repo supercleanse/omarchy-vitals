@@ -34,7 +34,10 @@ Column {
   readonly property string defaultStyle: service ? service.defaultStyle : "both"
 
   readonly property var available: Model.MODULE_IDS.filter(function(id) { return Model.moduleAvailable(id, root.info) })
-  readonly property var unavailable: Model.MODULE_IDS.filter(function(id) { return !Model.moduleAvailable(id, root.info) })
+  readonly property var unavailable: Model.MODULE_IDS.filter(function(id) {
+    if (id === "sensors" && root.info.os === "macos") return false
+    return !Model.moduleAvailable(id, root.info)
+  })
   // The machine's own list, keeping modules it can't show right now so a
   // GPU that comes back later reappears where it was.
   readonly property var allModules: Model.machineModules(machine, service ? service.defaultModules : null)
@@ -428,17 +431,6 @@ Column {
             }
           }
 
-          Text {
-            visible: root.info.os === "macos" && text !== ""
-            width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: root.info.sensorsNote ? root.info.sensorsNote + ", so only the battery is listed." : ""
-            color: root.foreground
-            opacity: 0.5
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-          }
         }
       }
     }
@@ -469,12 +461,7 @@ Column {
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: {
-            var why = Model.unavailableReason(modelData, root.info)
-            if (modelData === "sensors" && root.info.os === "macos" && root.info.sensorsNote)
-              why += ". " + root.info.sensorsNote + "."
-            return why
-          }
+          text: Model.unavailableReason(modelData, root.info)
           color: root.foreground
           opacity: 0.4
           font.family: root.fontFamily

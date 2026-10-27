@@ -573,8 +573,8 @@ darwin_main() {
   [ -n "$wait_s" ] && [ "$wait_s" -ge 1 ] 2>/dev/null || wait_s=1
 
   # What this Mac has: Apple GPU load from IOAccelerator, a battery from
-  # AppleSmartBattery. Without root the only temperature macOS hands out is
-  # the battery's; CPU and GPU temperatures and fan speeds need a helper.
+  # AppleSmartBattery. The battery's is the only temperature macOS reports
+  # without root.
   has_gpu=0; has_bat=0
   ioreg -r -d 1 -c IOAccelerator 2>/dev/null | grep -q '"Device Utilization %"' && has_gpu=1
   ioreg -rc AppleSmartBattery 2>/dev/null | awk '$1 == "\"MaxCapacity\"" && $3 + 0 > 0 { found = 1 } END { exit !found }' && has_bat=1
@@ -585,7 +585,7 @@ darwin_main() {
   fi
   sensors_json=""
   [ "$has_bat" = 1 ] && sensors_json='{"id":"battery","label":"Battery temperature","kind":"temp"}'
-  vitals_emit "{\"type\":\"hello\",\"v\":2,\"os\":\"macos\",\"osName\":\"$(vitals_json_text "$os_name")\",\"host\":\"$(vitals_json_text "$host")\",\"cores\":$cores,\"interval\":$wait_s,\"caps\":{\"gpu\":$(vitals_bool $has_gpu),\"disks\":true,\"sensors\":$(vitals_bool $has_bat),\"battery\":$(vitals_bool $has_bat)},\"gpus\":[$gpus_json],\"disks\":[],\"sensors\":[$sensors_json],\"sensorsNote\":\"CPU and GPU temperatures and fan speeds need root on macOS\"}"
+  vitals_emit "{\"type\":\"hello\",\"v\":2,\"os\":\"macos\",\"osName\":\"$(vitals_json_text "$os_name")\",\"host\":\"$(vitals_json_text "$host")\",\"cores\":$cores,\"interval\":$wait_s,\"caps\":{\"gpu\":$(vitals_bool $has_gpu),\"disks\":true,\"sensors\":$(vitals_bool $has_bat),\"battery\":$(vitals_bool $has_bat)},\"gpus\":[$gpus_json],\"disks\":[],\"sensors\":[$sensors_json]}"
 
   want_gpu=0; want_bat=0; want_disk=0; want_space=0; use_bat=0
   vitals_has gpu && [ "$has_gpu" = 1 ] && want_gpu=1

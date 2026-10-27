@@ -144,7 +144,7 @@ eq(M.machineStyle({}, 'memory', 'text'), 'text', 'global default look applies')
 
 const macInfo = { os: 'macos', caps: { gpu: true, disks: true, sensors: false, battery: false }, gpus: [{ id: 'apple', vendor: 'apple' }], sensors: [] }
 eq(M.moduleAvailable('battery', macInfo), false, 'no battery on a desktop Mac')
-eq(M.unavailableReason('sensors', macInfo), 'Unavailable on macOS without a helper', 'macOS sensors reason')
+eq(M.unavailableReason('sensors', macInfo), 'No sensors found', 'macOS sensors reason')
 eq(M.moduleAvailable('battery', {}), true, 'before the first hello every module is offered')
 const ro = M.readouts({ modules: ['cpu', 'battery', 'gpu', 'disks', 'sensors'], disks: [{ disk: 'all', show: 'speed' }, { disk: 'nvme0n1', show: 'used' }], showGpuMemory: true }, macInfo, null, 'both')
 eq(ro.map(r => r.key), ['cpu', 'gpu:apple', 'vram:apple', 'disk:all', 'disk:nvme0n1'], 'readouts skip what the machine lacks and expand disks and GPUs')

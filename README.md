@@ -58,7 +58,7 @@ the sidebar scrolls.
 | Network | `/proc/net/dev`, interfaces backed by a real device | `netstat -ibn`, `en*` interfaces |
 | GPU | AMD: `gpu_busy_percent`, VRAM and temperature from sysfs. NVIDIA: `nvidia-smi`. Intel: clock only (the kernel reports no load) | Apple GPU load from `ioreg` IOAccelerator "Device Utilization %", plus GPU memory in use |
 | Disks | `/proc/diskstats` per whole disk; space from `df`, mapped through partitions, LUKS and LVM to the disk underneath | Read and write from `ioreg` IOBlockStorageDriver, all disks together; space of the startup volume's container from `df` |
-| Sensors | Every hwmon temperature and fan (`/sys/class/hwmon`), plus "CPU temperature" for the CPU package | Battery temperature only. CPU and GPU temperatures and fan speeds need root (or a helper app) on macOS, so Vitals offers no others there and says so on the settings page |
+| Sensors | Every hwmon temperature and fan (`/sys/class/hwmon`), plus "CPU temperature" for the CPU package | Battery temperature (MacBooks) |
 | Battery | `/sys/class/power_supply` (the system battery, not mice or headsets) | `ioreg` AppleSmartBattery |
 
 A GPU that runtime power management has put to sleep is reported as idle
@@ -131,7 +131,7 @@ window's place until you close it.
   both. Sensors list every temperature and fan it reported. A machine with
   several GPUs lists them, and **Show VRAM** adds a memory readout per GPU.
   Readouts the machine doesn't have are listed underneath with the reason, such
-  as "No battery" or "Unavailable on macOS without a helper".
+  as "No battery".
   **Reset to defaults** returns the machine to the default readouts.
 - **All machines.** Letters or icons for labels, °C or °F, and the default look.
 
@@ -306,10 +306,8 @@ marked **stale** after three missed samples.
 - Vitals uses only built-in tools: `iostat`, `vm_stat`, `netstat`, `sysctl`,
   `sw_vers`, `scutil`, and `ioreg` and `df` for the GPU, disk and battery
   readouts. Nothing needs root.
-- Temperatures: only the battery's (MacBooks). macOS hands CPU and GPU
-  temperatures and fan speeds only to root or to a compiled helper using
-  private frameworks, which Vitals doesn't install; desktop Macs list the
-  sensors readout as unavailable.
+- Temperatures: the battery's, on MacBooks. Vitals reports only what macOS
+  hands out without root, so a desktop Mac has no sensors readout.
 - Memory "used" is App Memory plus Wired plus Compressed, the same figure
   Activity Monitor shows as Memory Used. It leaves out file cache, which
   `top`'s PhysMem counts.
