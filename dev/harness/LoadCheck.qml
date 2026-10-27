@@ -50,9 +50,24 @@ Scope {
       id: view
       y: Style.bar.sizeHorizontal
       width: 200
-      height: 860
+      height: 1400
       service: service
       edge: "right"
+    }
+
+    // VITALS_MODULES: switch every remote to these modules through the
+    // service's own update path, which also restarts their samplers.
+    Timer {
+      interval: 4000
+      running: Quickshell.env("VITALS_MODULES") !== ""
+      onTriggered: {
+        var mods = Quickshell.env("VITALS_MODULES").split(",")
+        for (var i = 0; i < service.machines.length; i++) {
+          var m = service.machines[i]
+          service.updateMachine(m.id, { modules: mods })
+        }
+        console.log("MODULES set to " + mods.join(","))
+      }
     }
 
     Timer {

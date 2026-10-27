@@ -22,5 +22,6 @@ FloatingWindow {
     anchors.fill: parent
     service: window.service
     showClose: false
+    inlineSettings: true
   }
 }

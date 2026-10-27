@@ -94,7 +94,7 @@ Item {
       glyphSize: Style.font.caption
       color: root.foreground
       fontFamily: root.fontFamily
-      onClicked: if (root.service) root.service.openEditor(root.machine.id)
+      onClicked: if (root.service) root.service.openSettings(root.machine.id)
     }
 
     IconButton {

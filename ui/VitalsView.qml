@@ -14,6 +14,9 @@ Rectangle {
   // the window, which has its own frame.
   property string edge: ""
   property bool showClose: true
+  // Window mode shows a machine's settings in place of the list; dock mode
+  // opens them in a popout beside the sidebar instead.
+  property bool inlineSettings: false
 
   readonly property color foreground: Commons.Color.bar.text
   readonly property color surface: Commons.Color.bar.background.a >= 0.9 ? Commons.Color.bar.background : Commons.Color.background
@@ -24,7 +27,8 @@ Rectangle {
   readonly property var machines: service ? service.machines : []
   readonly property var shown: machines.filter(function(m) { return m.enabled !== false })
   readonly property bool editing: !!service && service.editing
-  readonly property bool editorOpen: !!service && !!service.editor
+  readonly property bool settingsInline: inlineSettings && !!service && service.settingsId !== ""
+  readonly property bool editorOpen: !!service && !!service.editor && !settingsInline
   readonly property int onlineCount: {
     if (!service) return 0
     var rev = service.linksRevision
@@ -179,7 +183,7 @@ Rectangle {
 
       // Monitoring view.
       Repeater {
-        model: !root.editing && !root.editorOpen ? root.shown : []
+        model: !root.editing && !root.editorOpen && !root.settingsInline ? root.shown : []
 
         delegate: Column {
           required property var modelData
@@ -207,7 +211,7 @@ Rectangle {
       }
 
       Text {
-        visible: !root.editing && !root.editorOpen && root.shown.length === 0
+        visible: !root.editing && !root.editorOpen && !root.settingsInline && root.shown.length === 0
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
@@ -220,7 +224,7 @@ Rectangle {
 
       // Edit mode: the full list, including machines that are switched off.
       Repeater {
-        model: root.editing && !root.editorOpen ? root.machines : []
+        model: root.editing && !root.editorOpen && !root.settingsInline ? root.machines : []
 
         delegate: EditRow {
           required property var modelData
@@ -238,7 +242,7 @@ Rectangle {
       }
 
       TextButton {
-        visible: root.editing && !root.editorOpen
+        visible: root.editing && !root.editorOpen && !root.settingsInline
         width: content.width
         text: "Add machine"
         glyph: Glyphs.plus
@@ -249,7 +253,7 @@ Rectangle {
       }
 
       Text {
-        visible: root.editing && !root.editorOpen
+        visible: root.editing && !root.editorOpen && !root.settingsInline
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
@@ -258,6 +262,20 @@ Rectangle {
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         renderType: Text.NativeRendering
+      }
+
+      Loader {
+        active: root.settingsInline
+        visible: active
+        width: content.width
+        sourceComponent: MachineSettings {
+          width: content.width
+          service: root.service
+          machineId: root.service ? root.service.settingsId : ""
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onCloseRequested: if (root.service) root.service.closeSettings()
+        }
       }
 
       MachineEditor {

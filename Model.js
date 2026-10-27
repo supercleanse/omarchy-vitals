@@ -18,11 +18,26 @@ var SETTINGS = {
   refreshSeconds: "2",
   historySeconds: 120,
   sampleWhileHidden: false,
-  barReadout: "icon"
+  barReadout: "icon",
+  modules: "cpu,memory,network",
+  style: "both",
+  barLabels: "text",
+  temperatureUnit: "Celsius"
 }
 
 var MODES = ["dock", "window"]
 var EDGES = ["right", "left"]
+
+// Arrays that pass through a Repeater's modelData (or any QML var) can come
+// back as list wrappers that fail Array.isArray. Treat any non-string object
+// with a length as a list.
+function asArray(x) {
+  if (Array.isArray(x)) return x
+  if (x && typeof x === "object" && typeof x.length === "number") return Array.prototype.slice.call(x)
+  return null
+}
+
+function isList(x) { return asArray(x) !== null }
 
 function clamp(v, lo, hi) {
   var n = Number(v)
@@ -59,8 +74,121 @@ function resolveSettings(settings) {
     refreshSeconds: refresh,
     historySeconds: Math.round(clamp(setting(settings, "historySeconds"), 30, 900)),
     sampleWhileHidden: flag(settings, "sampleWhileHidden"),
-    barReadout: String(setting(settings, "barReadout")) === "count" ? "count" : "icon"
+    barReadout: String(setting(settings, "barReadout")) === "count" ? "count" : "icon",
+    modules: parseModules(setting(settings, "modules")),
+    style: normalizeStyle(setting(settings, "style")) || "both",
+    labels: String(setting(settings, "barLabels")) === "icon" ? "icon" : "text",
+    temperatureUnit: String(setting(settings, "temperatureUnit")).toLowerCase() === "fahrenheit" ? "Fahrenheit" : "Celsius"
   }
+}
+
+// ---------------------------------------------------------------- modules
+//
+// The module set, look names and disk options follow OmaStats by Carmine
+// Paolino (MIT) so the two read the same.
+
+var MODULES = [
+  { id: "cpu",     icon: String.fromCodePoint(0xF0EE0), short: "CPU", label: "CPU",     graph: true,  ring: true },
+  { id: "gpu",     icon: String.fromCodePoint(0xF08AE), short: "GPU", label: "GPU",     graph: true,  ring: true },
+  { id: "memory",  icon: String.fromCodePoint(0xF035B), short: "MEM", label: "Memory",  graph: true,  ring: true },
+  { id: "disks",   icon: String.fromCodePoint(0xF02CA), short: "DSK", label: "Disks",   graph: true,  ring: true },
+  { id: "network", icon: String.fromCodePoint(0xF06F3), short: "NET", label: "Network", graph: true,  ring: false },
+  { id: "sensors", icon: String.fromCodePoint(0xF050F), short: "SEN", label: "Sensors", graph: false, ring: false },
+  { id: "battery", icon: String.fromCodePoint(0xF0079), short: "BAT", label: "Battery", graph: false, ring: true }
+]
+
+var MODULE_IDS = ["cpu", "gpu", "memory", "disks", "network", "sensors", "battery"]
+var DEFAULT_MODULES = ["cpu", "memory", "network"]
+// Modules the sampler only reads when asked; cpu, memory and network are always on.
+var EXTRAS = ["gpu", "disks", "sensors", "battery"]
+var STYLES = ["graph", "ring", "text", "both", "ring-text"]
+var DISK_SHOWS = [
+  { value: "speed", label: "Speed" },
+  { value: "used", label: "Used" },
+  { value: "both", label: "Both" }
+]
+
+function moduleDef(id) {
+  if (id === "gpuMemory") return { id: "gpuMemory", icon: String.fromCodePoint(0xF035B), short: "VRM", label: "VRAM", graph: true, ring: true }
+  for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === id) return MODULES[i]
+  return MODULES[0]
+}
+
+function parseModules(raw) {
+  var text = isList(raw) ? asArray(raw).join(",") : String(raw || "")
+  var parts = text.toLowerCase().split(/[\s,;]+/)
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var id = parts[i]
+    if (id === "mem" || id === "ram") id = "memory"
+    if (id === "net") id = "network"
+    if (id === "disk") id = "disks"
+    if (id === "sensor" || id === "temps") id = "sensors"
+    if (MODULE_IDS.indexOf(id) !== -1 && out.indexOf(id) === -1) out.push(id)
+  }
+  return out
+}
+
+function normalizeStyle(value) {
+  var mode = String(value || "").toLowerCase().replace("+", "-").replace("_", "-")
+  if (mode === "ringtext" || mode === "ring-figure") mode = "ring-text"
+  if (mode === "graph-text") mode = "both"
+  return STYLES.indexOf(mode) !== -1 ? mode : ""
+}
+
+// Look choices for one module: rings only where fullness means something.
+function styleOptions(module) {
+  var def = moduleDef(module)
+  if (module === "disks") {
+    return [
+      { value: "graph", label: "Graph or ring" },
+      { value: "text", label: "Figure" },
+      { value: "both", label: "Graph or ring, and figure" }
+    ]
+  }
+  var out = []
+  if (def.graph) out.push({ value: "graph", label: "Graph" })
+  if (def.ring) out.push({ value: "ring", label: "Ring" })
+  out.push({ value: "text", label: "Figure" })
+  if (def.graph) out.push({ value: "both", label: "Graph and figure" })
+  if (def.ring) out.push({ value: "ring-text", label: "Ring and figure" })
+  return out
+}
+
+// A style that suits the module: a ring look on a module without rings (or
+// a graph look on one without graphs) falls back to the nearest fit.
+function fitStyle(module, style) {
+  var def = moduleDef(module)
+  var s = normalizeStyle(style) || "both"
+  if (module === "disks") return diskLook(s)
+  if (!def.ring && s === "ring") s = "graph"
+  if (!def.ring && s === "ring-text") s = "both"
+  if (!def.graph && s === "graph") s = def.ring ? "ring" : "text"
+  if (!def.graph && s === "both") s = def.ring ? "ring-text" : "text"
+  return s
+}
+
+function diskLook(style) {
+  if (style === "ring") return "graph"
+  if (style === "ring-text") return "both"
+  return normalizeStyle(style) || "both"
+}
+
+function normalizeDiskShow(value) {
+  var show = String(value || "").toLowerCase()
+  for (var i = 0; i < DISK_SHOWS.length; i++) if (DISK_SHOWS[i].value === show) return show
+  return ""
+}
+
+function moveInList(list, id, delta) {
+  var out = list.slice()
+  var from = out.indexOf(id)
+  if (from < 0) return out
+  var to = Math.max(0, Math.min(out.length - 1, from + delta))
+  if (to === from) return out
+  out.splice(from, 1)
+  out.splice(to, 0, id)
+  return out
 }
 
 // Samples kept per machine: enough to cover the history at this interval.
@@ -112,7 +240,7 @@ function localEntry() {
 // local entry (empty host), unique ids, trimmed text, booleans for enabled.
 // Remote entries without a valid destination are dropped.
 function normalizeMachines(raw) {
-  var list = raw && Array.isArray(raw.machines) ? raw.machines : (Array.isArray(raw) ? raw : [])
+  var list = raw && isList(raw.machines) ? asArray(raw.machines) : (isList(raw) ? asArray(raw) : [])
   var out = []
   var taken = []
   var haveLocal = false
@@ -124,7 +252,7 @@ function normalizeMachines(raw) {
     if (isLocal) {
       if (haveLocal) continue
       haveLocal = true
-      out.push({ id: "local", alias: cleanText(m.alias, 40), host: "", enabled: m.enabled !== false })
+      out.push(withReadouts({ id: "local", alias: cleanText(m.alias, 40), host: "", enabled: m.enabled !== false }, m))
       taken.push("local")
       continue
     }
@@ -133,21 +261,87 @@ function normalizeMachines(raw) {
     var id = cleanText(m.id, 40)
     if (!id || id === "local" || taken.indexOf(id) !== -1 || !/^[A-Za-z0-9._-]+$/.test(id)) id = uniqueId(alias, taken)
     taken.push(id)
-    out.push({ id: id, alias: alias, host: host, enabled: m.enabled !== false })
+    out.push(withReadouts({ id: id, alias: alias, host: host, enabled: m.enabled !== false }, m))
   }
   if (!haveLocal) out.unshift(localEntry())
   return out
 }
 
+var FILE_VERSION = 2
+
+// Per-machine readout settings (version 2). Every key is optional; a missing
+// key follows the global default:
+//   modules       ["cpu", "memory", ...] in display order
+//   styles        { cpu: "both", memory: "ring-text", ... }
+//   disks         [{ disk: "all" | "nvme0n1", show: "speed" | "used" | "both" }]
+//   sensors       ["cpu", "nvme/temp1", ...]
+//   gpus          "all" or ["0000:03:00.0", ...]
+//   showGpuMemory true to add a VRAM readout beside each GPU
+function withReadouts(entry, raw) {
+  var m = raw || {}
+  if (isList(m.modules) || typeof m.modules === "string") entry.modules = parseModules(m.modules)
+  if (m.styles && typeof m.styles === "object" && !isList(m.styles)) {
+    var styles = {}
+    var any = false
+    for (var k in m.styles) {
+      var st = normalizeStyle(m.styles[k])
+      if (MODULE_IDS.indexOf(k) !== -1 && st) { styles[k] = st; any = true }
+    }
+    if (any) entry.styles = styles
+  }
+  if (isList(m.disks)) {
+    var disks = []
+    var seen = []
+    for (var i = 0; i < m.disks.length; i++) {
+      var d = m.disks[i] || {}
+      var name = cleanText(typeof d === "string" ? d : d.disk, 32)
+      if (!/^[A-Za-z0-9_]+$/.test(name) || seen.indexOf(name) !== -1) continue
+      seen.push(name)
+      disks.push({ disk: name, show: normalizeDiskShow(d.show) || "speed" })
+    }
+    entry.disks = disks
+  }
+  if (isList(m.sensors)) {
+    entry.sensors = asArray(m.sensors).map(function(x) { return cleanText(x, 64) })
+      .filter(function(x, at, all) { return /^[A-Za-z0-9_.:\/-]+$/.test(x) && all.indexOf(x) === at })
+  }
+  if (m.gpus === "all") entry.gpus = "all"
+  else if (isList(m.gpus)) entry.gpus = asArray(m.gpus).map(function(x) { return cleanText(x, 64) }).filter(function(x) { return /^[A-Za-z0-9_.:-]+$/.test(x) })
+  if (m.showGpuMemory === true) entry.showGpuMemory = true
+  return entry
+}
+
+// { ok, version, machines }. A file from before version 2 parses as is: its
+// machines simply have no readout settings yet and follow the defaults.
 function parseMachinesFile(text) {
   var data = null
-  try { data = JSON.parse(String(text || "")) } catch (e) { return { ok: false, machines: normalizeMachines(null) } }
-  return { ok: true, machines: normalizeMachines(data) }
+  try { data = JSON.parse(String(text || "")) } catch (e) { return { ok: false, version: 0, machines: normalizeMachines(null) } }
+  if (!data || typeof data !== "object") return { ok: false, version: 0, machines: normalizeMachines(null) }
+  return { ok: true, version: Math.round(num(data.version, 1)), machines: normalizeMachines(data) }
 }
 
 function serializeMachines(machines) {
   var clean = normalizeMachines({ machines: machines })
-  return JSON.stringify({ version: 1, machines: clean }, null, 2) + "\n"
+  return JSON.stringify({ version: FILE_VERSION, machines: clean }, null, 2) + "\n"
+}
+
+// Merge readout settings into one machine. A key set to null goes back to
+// following the default.
+function updateMachine(machines, id, patch) {
+  var list = normalizeMachines({ machines: machines })
+  var at = indexOfMachine(list, id)
+  if (at === -1) return list
+  var next = JSON.parse(JSON.stringify(list[at]))
+  for (var k in patch) {
+    if (patch[k] === null || patch[k] === undefined) delete next[k]
+    else next[k] = patch[k]
+  }
+  list[at] = normalizeMachines({ machines: [next] }).filter(function(m) { return m.id === next.id })[0] || list[at]
+  return normalizeMachines({ machines: list })
+}
+
+function resetReadouts(machines, id) {
+  return updateMachine(machines, id, { modules: null, styles: null, disks: null, sensors: null, gpus: null, showGpuMemory: null })
 }
 
 function indexOfMachine(machines, id) {
@@ -170,7 +364,12 @@ function upsertMachine(machines, entry) {
     var taken = list.map(function(m) { return m.id })
     list.push({ id: uniqueId(alias || host, taken), alias: alias || host, host: host, enabled: entry.enabled !== false })
   } else {
-    list[at] = { id: list[at].id, alias: isLocal ? alias : (alias || host), host: host, enabled: entry.enabled !== false }
+    // Keep the machine's readout settings when its name or destination changes.
+    var kept = JSON.parse(JSON.stringify(list[at]))
+    kept.alias = isLocal ? alias : (alias || host)
+    kept.host = host
+    kept.enabled = entry.enabled !== false
+    list[at] = kept
   }
   return { machines: list, error: "" }
 }
@@ -224,16 +423,185 @@ function intervalArg(seconds) {
 }
 
 // Local: plain sh running the sampler file.
-function localCommand(samplerPath, seconds) {
-  return ["/bin/sh", String(samplerPath), intervalArg(seconds)]
+function localCommand(samplerPath, seconds, extras, sensorIds) {
+  return ["/bin/sh", String(samplerPath), intervalArg(seconds), String(extras || ""), String(sensorIds || "cpu")]
 }
 
 // Remote: ssh runs `sh -s` on the far side and the sampler arrives on stdin,
 // so nothing is installed there. The small sh wrapper only redirects the
 // file into ssh's stdin; every value travels as its own argument.
-function remoteCommand(samplerPath, host, seconds) {
+function remoteCommand(samplerPath, host, seconds, extras, sensorIds) {
   var argv = ["/bin/sh", "-c", "f=$1; shift; exec ssh \"$@\" < \"$f\"", "vitals-ssh", String(samplerPath)]
-  return argv.concat(SSH_OPTIONS, ["--", String(host), "sh", "-s", "--", intervalArg(seconds)])
+  return argv.concat(SSH_OPTIONS, ["--", String(host), "sh", "-s", "--", intervalArg(seconds),
+    String(extras || "-"), String(sensorIds || "cpu")])
+}
+
+// ---------------------------------------------------------------- readouts
+
+// The modules a machine shows, in order.
+function machineModules(machine, defaults) {
+  if (machine && isList(machine.modules)) return asArray(machine.modules).slice()
+  var d = isList(defaults) && defaults.length ? defaults : DEFAULT_MODULES
+  return d.slice()
+}
+
+// What the machine reported it has. Before its first hello every module is
+// offered, since nothing is known yet.
+function moduleAvailable(module, info) {
+  var caps = info && info.caps
+  if (!caps) return true
+  if (module === "gpu") return caps.gpu === true
+  if (module === "disks") return caps.disks !== false
+  if (module === "sensors") return caps.sensors === true
+  if (module === "battery") return caps.battery === true
+  return true
+}
+
+function unavailableReason(module, info) {
+  if (moduleAvailable(module, info)) return ""
+  if (module === "gpu") return "No GPU found"
+  if (module === "battery") return "No battery"
+  if (module === "disks") return "No disks found"
+  if (module === "sensors") {
+    if (info && info.os === "macos") return "Unavailable on macOS without a helper"
+    return "No sensors found"
+  }
+  return ""
+}
+
+function machineStyle(machine, module, globalStyle) {
+  var own = machine && machine.styles ? normalizeStyle(machine.styles[module]) : ""
+  return fitStyle(module, own || globalStyle || "both")
+}
+
+function machineDisks(machine) {
+  if (machine && isList(machine.disks)) return asArray(machine.disks).map(function(d) { return { disk: d.disk, show: d.show } })
+  return [{ disk: "all", show: "speed" }]
+}
+
+// Sensors to read: the machine's picks, else the first of the CPU package or
+// the battery the machine has.
+function machineSensors(machine, info) {
+  if (machine && isList(machine.sensors)) return asArray(machine.sensors).slice()
+  var list = info && isList(info.sensors) ? asArray(info.sensors) : []
+  for (var i = 0; i < list.length; i++) if (list[i].id === "cpu" || list[i].id === "battery") return [list[i].id]
+  return list.length > 0 ? [list[0].id] : ["cpu"]
+}
+
+function machineGpuIds(machine, info) {
+  var all = info && isList(info.gpus) ? asArray(info.gpus).map(function(g) { return g.id }) : []
+  if (!machine || machine.gpus === undefined || machine.gpus === null || machine.gpus === "all") return all
+  return asArray(machine.gpus).filter(function(id) { return all.length === 0 || all.indexOf(id) !== -1 })
+}
+
+// The sampler's second and third arguments for this machine.
+function samplerExtras(machine, defaults) {
+  var mods = machineModules(machine, defaults)
+  return EXTRAS.filter(function(x) { return mods.indexOf(x) !== -1 }).join(",")
+}
+
+function samplerSensorIds(machine, info) {
+  return machineSensors(machine, info).join(",") || "cpu"
+}
+
+// One entry per row on the card: GPUs and disks expand to a row each, the
+// way OmaStats expands them in the bar. Modules the machine lacks are left out.
+function readouts(machine, info, defaults, globalStyle) {
+  var mods = machineModules(machine, defaults)
+  var out = []
+  for (var i = 0; i < mods.length; i++) {
+    var id = mods[i]
+    if (!moduleAvailable(id, info)) continue
+    var style = machineStyle(machine, id, globalStyle)
+    if (id === "gpu") {
+      var gpus = machineGpuIds(machine, info)
+      if (gpus.length === 0 && !(info && info.caps)) gpus = [""]
+      for (var g = 0; g < gpus.length; g++) {
+        out.push({ key: "gpu:" + gpus[g], module: "gpu", gpuId: gpus[g], style: style, label: gpus.length > 1 ? gpuShort(info, gpus[g]) : "" })
+        if (machine && machine.showGpuMemory) out.push({ key: "vram:" + gpus[g], module: "gpuMemory", gpuId: gpus[g], style: style, label: "VRM" })
+      }
+      continue
+    }
+    if (id === "disks") {
+      var disks = machineDisks(machine)
+      for (var d = 0; d < disks.length; d++) {
+        out.push({ key: "disk:" + disks[d].disk, module: "disks", disk: disks[d].disk, show: disks[d].show, style: style, label: disks.length > 1 ? diskShort(disks[d].disk) : "" })
+      }
+      continue
+    }
+    out.push({ key: id, module: id, style: style, label: "" })
+  }
+  return out
+}
+
+function gpuShort(info, id) {
+  var list = info && isList(info.gpus) ? asArray(info.gpus) : []
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id !== id) continue
+    if (list[i].vendor === "nvidia") return "NVD"
+    if (list[i].vendor === "amd") return "AMD"
+    if (list[i].vendor === "intel") return "INT"
+  }
+  return "GPU"
+}
+
+// nvme0n1 -> NV0, sda -> SDA, mmcblk0 -> MC0.
+function diskShort(disk) {
+  var name = String(disk || "")
+  if (!name || name === "all") return "DSK"
+  var m = name.match(/^nvme(\d+)n\d+$/)
+  if (m) return "NV" + m[1]
+  m = name.match(/^mmcblk(\d+)$/)
+  if (m) return "MC" + m[1]
+  return name.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "DSK"
+}
+
+function sensorInfo(info, id) {
+  var list = info && isList(info.sensors) ? asArray(info.sensors) : []
+  for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]
+  return null
+}
+
+// One sensor's figure, or null when the machine did not report it.
+function sensorReading(sample, info, id, unit) {
+  var s = sample || {}
+  var meta = sensorInfo(info, id) || { label: id, kind: "temp" }
+  if (meta.kind === "fan") {
+    var rpm = s.fans ? s.fans[id] : undefined
+    if (rpm === undefined || rpm === null || !isFinite(Number(rpm))) return null
+    rpm = Number(rpm)
+    return { id: id, short: "FAN", label: meta.label, text: rpm > 0 ? String(Math.round(rpm)) : "off", unit: rpm > 0 ? "rpm" : "", kind: "fan" }
+  }
+  var c = s.temps ? s.temps[id] : undefined
+  if (c === undefined || c === null || !isFinite(Number(c))) return null
+  var short = id === "cpu" ? "CPU" : (id === "battery" ? "BAT" : (/gpu|amdgpu/i.test(id) ? "GPU" : (/nvme/i.test(id) ? "NVM" : "TMP")))
+  return { id: id, short: short, label: meta.label, text: tempText(c, unit), unit: "", kind: "temp", celsius: Number(c) }
+}
+
+function tempText(celsius, unit) {
+  var c = Number(celsius)
+  if (!isFinite(c)) return "\u2014"
+  return Math.round(unit === "Fahrenheit" ? c * 9 / 5 + 32 : c) + "\u00b0"
+}
+
+function batteryIcon(percent, charging) {
+  if (charging) return String.fromCodePoint(0xF0084)
+  var icons = [0xF008E, 0xF007A, 0xF007B, 0xF007C, 0xF007D, 0xF007E, 0xF007F, 0xF0080, 0xF0081, 0xF0082, 0xF0079]
+  return String.fromCodePoint(icons[Math.round(clamp(percent, 0, 100) / 10)])
+}
+
+function clockText(minutes) {
+  var m = Math.max(0, Math.round(Number(minutes) || 0))
+  var h = Math.floor(m / 60)
+  var r = m % 60
+  return h + ":" + (r < 10 ? "0" : "") + r
+}
+
+// "1.2G" or "850M" for a GPU that reports a clock but no load.
+function compactFreq(mhz) {
+  var m = Number(mhz)
+  if (mhz === null || !isFinite(m)) return "\u2014"
+  return m >= 1000 ? (m / 1000).toFixed(1) + "G" : Math.round(m) + "M"
 }
 
 // Reconnect delay after the n-th consecutive failure: 2, 4, 8, 16, 30, 30 … s.
@@ -252,7 +620,7 @@ function staleAfterMs(seconds) {
 
 function parseLine(line) {
   var text = String(line || "")
-  if (!text || text.length > 4096 || text.charAt(0) !== "{") return null
+  if (!text || text.length > 65536 || text.charAt(0) !== "{") return null
   var data
   try { data = JSON.parse(text) } catch (e) { return null }
   if (!data || typeof data !== "object") return null
@@ -262,7 +630,21 @@ function parseLine(line) {
       os: data.os === "macos" ? "macos" : (data.os === "linux" ? "linux" : "unknown"),
       osName: cleanText(data.osName, 80),
       host: cleanText(data.host, 80),
-      cores: Math.max(0, Math.round(num(data.cores)))
+      cores: Math.max(0, Math.round(num(data.cores))),
+      // Version 1 samplers sent no capabilities; leave caps out so every
+      // module stays on offer.
+      caps: data.caps && typeof data.caps === "object" ? {
+        gpu: data.caps.gpu === true, disks: data.caps.disks !== false,
+        sensors: data.caps.sensors === true, battery: data.caps.battery === true
+      } : null,
+      gpus: (isList(data.gpus) ? data.gpus : []).slice(0, 8).map(function(g) {
+        return { id: cleanText(g.id, 64), name: cleanText(g.name, 60), vendor: cleanText(g.vendor, 16), util: g.util === true }
+      }),
+      disks: (isList(data.disks) ? data.disks : []).slice(0, 32).map(function(d) { return cleanText(d, 32) }),
+      sensors: (isList(data.sensors) ? data.sensors : []).slice(0, 64).map(function(x) {
+        return { id: cleanText(x.id, 64), label: cleanText(x.label, 48), kind: x.kind === "fan" ? "fan" : "temp" }
+      }),
+      sensorsNote: cleanText(data.sensorsNote, 120)
     }
   }
   if (data.type === "sample") {
@@ -278,15 +660,95 @@ function parseLine(line) {
       memPercent: total > 0 ? used / total * 100 : 0,
       rx: Math.max(0, num(data.rx)),
       tx: Math.max(0, num(data.tx)),
-      load: Math.max(0, num(data.load))
+      load: Math.max(0, num(data.load)),
+      gpus: isList(data.gpus) ? data.gpus.slice(0, 8).map(parseGpu) : null,
+      disk: data.disk && typeof data.disk === "object" ? parseDisk(data.disk) : null,
+      temps: numberMap(data.temps),
+      fans: numberMap(data.fans),
+      battery: data.battery && typeof data.battery === "object" ? {
+        percent: nullableNumber(data.battery.percent, 0, 100),
+        status: cleanText(data.battery.status, 20) || "Unknown",
+        toEmpty: nullableNumber(data.battery.toEmpty, 0, 100000),
+        toFull: nullableNumber(data.battery.toFull, 0, 100000)
+      } : null
     }
   }
   if (data.type === "error") return { type: "error", message: cleanText(data.message, 160) }
   return null
 }
 
+function nullableNumber(v, lo, hi) {
+  if (v === null || v === undefined || v === "" || !isFinite(Number(v))) return null
+  return clamp(v, lo, hi)
+}
+
+function numberMap(obj) {
+  if (!obj || typeof obj !== "object") return null
+  var out = {}
+  for (var k in obj) {
+    var v = Number(obj[k])
+    if (isFinite(v)) out[cleanText(k, 64)] = v
+  }
+  return out
+}
+
+function parseGpu(g) {
+  var x = g || {}
+  return {
+    id: cleanText(x.id, 64),
+    util: nullableNumber(x.util, 0, 100),
+    mhz: nullableNumber(x.mhz, 0, 100000),
+    temp: nullableNumber(x.temp, -50, 200),
+    memUsed: nullableNumber(x.memUsed, 0, 1e15),
+    memTotal: nullableNumber(x.memTotal, 0, 1e15)
+  }
+}
+
+function parseDisk(d) {
+  var per = {}
+  if (d.per && typeof d.per === "object") {
+    for (var k in d.per) {
+      var v = d.per[k]
+      if (isList(v) && v.length >= 2) per[cleanText(k, 32)] = [Math.max(0, num(v[0])), Math.max(0, num(v[1]))]
+    }
+  }
+  var space = {}
+  if (d.space && typeof d.space === "object") {
+    for (var s in d.space) {
+      var sv = d.space[s]
+      if (isList(sv) && sv.length >= 2 && num(sv[1]) > 0) space[cleanText(s, 32)] = [Math.max(0, num(sv[0])), num(sv[1])]
+    }
+  }
+  return { read: Math.max(0, num(d.read)), write: Math.max(0, num(d.write)), per: per, space: space }
+}
+
+function gpuSample(sample, id) {
+  var list = sample && isList(sample.gpus) ? asArray(sample.gpus) : []
+  for (var i = 0; i < list.length; i++) if (!id || list[i].id === id) return list[i]
+  return null
+}
+
+function gpuMemoryPercent(g) {
+  if (!g || g.memUsed === null || g.memTotal === null || !(g.memTotal > 0)) return null
+  return Math.min(100, g.memUsed / g.memTotal * 100)
+}
+
+// Read/write rates for one disk entry ("all" or a device name).
+function diskRates(sample, disk) {
+  var d = sample && sample.disk
+  if (!d) return null
+  if (!disk || disk === "all") return [d.read, d.write]
+  return d.per[disk] || null
+}
+
+function diskSpace(sample, disk) {
+  var d = sample && sample.disk
+  if (!d || !d.space) return null
+  return d.space[disk || "all"] || null
+}
+
 function pushHistory(arr, value, max) {
-  var list = Array.isArray(arr) ? arr : []
+  var list = isList(arr) ? asArray(arr) : []
   var keep = Math.max(1, max - 1)
   var out = list.length > keep ? list.slice(list.length - keep) : list.slice()
   out.push(Number(value) || 0)
@@ -294,24 +756,54 @@ function pushHistory(arr, value, max) {
 }
 
 function emptyHistory() {
-  return { cpuUser: [], cpuSys: [], mem: [], rx: [], tx: [] }
+  return { cpuUser: [], cpuSys: [], mem: [], rx: [], tx: [], gpu: {}, gpuMem: {}, diskRead: {}, diskWrite: {}, battery: [] }
+}
+
+function pushKeyed(map, key, value, max) {
+  var next = {}
+  for (var k in (map || {})) next[k] = map[k]
+  next[key] = pushHistory(next[key], value, max)
+  return next
 }
 
 function pushSample(history, sample, max) {
   var h = history || emptyHistory()
-  return {
+  var out = {
     cpuUser: pushHistory(h.cpuUser, sample.user, max),
     cpuSys: pushHistory(h.cpuSys, sample.sys, max),
     mem: pushHistory(h.mem, sample.memPercent, max),
     rx: pushHistory(h.rx, sample.rx, max),
-    tx: pushHistory(h.tx, sample.tx, max)
+    tx: pushHistory(h.tx, sample.tx, max),
+    gpu: h.gpu || {}, gpuMem: h.gpuMem || {}, diskRead: h.diskRead || {}, diskWrite: h.diskWrite || {},
+    battery: h.battery || []
   }
+  var gpus = isList(sample.gpus) ? asArray(sample.gpus) : []
+  for (var i = 0; i < gpus.length; i++) {
+    out.gpu = pushKeyed(out.gpu, gpus[i].id, gpus[i].util === null ? 0 : gpus[i].util, max)
+    var gm = gpuMemoryPercent(gpus[i])
+    if (gm !== null) out.gpuMem = pushKeyed(out.gpuMem, gpus[i].id, gm, max)
+  }
+  if (sample.disk) {
+    out.diskRead = pushKeyed(out.diskRead, "all", sample.disk.read, max)
+    out.diskWrite = pushKeyed(out.diskWrite, "all", sample.disk.write, max)
+    for (var d in sample.disk.per) {
+      out.diskRead = pushKeyed(out.diskRead, d, sample.disk.per[d][0], max)
+      out.diskWrite = pushKeyed(out.diskWrite, d, sample.disk.per[d][1], max)
+    }
+  }
+  if (sample.battery && sample.battery.percent !== null) out.battery = pushHistory(h.battery, sample.battery.percent, max)
+  return out
 }
 
 function trimHistory(history, max) {
   var h = history || emptyHistory()
-  var cut = function(a) { return Array.isArray(a) && a.length > max ? a.slice(a.length - max) : (a || []) }
-  return { cpuUser: cut(h.cpuUser), cpuSys: cut(h.cpuSys), mem: cut(h.mem), rx: cut(h.rx), tx: cut(h.tx) }
+  var cut = function(a) { var l = asArray(a) || []; return l.length > max ? l.slice(l.length - max) : l }
+  var cutMap = function(m) { var o = {}; for (var k in (m || {})) o[k] = cut(m[k]); return o }
+  return {
+    cpuUser: cut(h.cpuUser), cpuSys: cut(h.cpuSys), mem: cut(h.mem), rx: cut(h.rx), tx: cut(h.tx),
+    gpu: cutMap(h.gpu), gpuMem: cutMap(h.gpuMem), diskRead: cutMap(h.diskRead), diskWrite: cutMap(h.diskWrite),
+    battery: cut(h.battery)
+  }
 }
 
 // Turn ssh's stderr into one short reason for the card.
@@ -507,5 +999,32 @@ if (typeof module !== "undefined") module.exports = {
   percentText: percentText,
   loadText: loadText,
   osGlyph: osGlyph,
-  parseColorsToml: parseColorsToml
+  parseColorsToml: parseColorsToml,
+  FILE_VERSION: FILE_VERSION,
+  MODULE_IDS: MODULE_IDS,
+  parseModules: parseModules,
+  normalizeStyle: normalizeStyle,
+  styleOptions: styleOptions,
+  fitStyle: fitStyle,
+  moveInList: moveInList,
+  updateMachine: updateMachine,
+  resetReadouts: resetReadouts,
+  machineModules: machineModules,
+  moduleAvailable: moduleAvailable,
+  unavailableReason: unavailableReason,
+  machineStyle: machineStyle,
+  machineDisks: machineDisks,
+  machineSensors: machineSensors,
+  machineGpuIds: machineGpuIds,
+  samplerExtras: samplerExtras,
+  samplerSensorIds: samplerSensorIds,
+  readouts: readouts,
+  diskShort: diskShort,
+  sensorReading: sensorReading,
+  tempText: tempText,
+  diskRates: diskRates,
+  diskSpace: diskSpace,
+  gpuSample: gpuSample,
+  compactFreq: compactFreq,
+  clockText: clockText
 }

@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Commons as Commons
 import "../Model.js" as Model
+import "Glyphs.js" as Glyphs
 
 // One machine: a status dot and its alias, then CPU, MEM and NET rows while
 // samples arrive. A machine that cannot be reached shows only that it is
@@ -28,6 +29,10 @@ Item {
   readonly property color danger: service ? service.danger : Commons.Color.urgent
   readonly property color dim: Util.alpha(foreground, 0.55)
   readonly property string alias: Model.displayAlias(machine, service ? service.localHostname : "")
+  readonly property var readoutList: Model.readouts(machine, link ? link.info : null,
+    service ? service.defaultModules : null, service ? service.defaultStyle : "both")
+  readonly property bool settingsOpen: !!service && service.settingsId === machine.id
+  readonly property bool gearShown: settingsOpen || headerHover.hovered
 
   readonly property color dotColor: status === "online" ? good
     : (status === "offline" ? danger
@@ -102,8 +107,11 @@ Item {
         renderType: Text.NativeRendering
       }
 
+      // The OS glyph gives way to a settings gear while the pointer is on
+      // the header, and the gear stays lit while this machine's settings
+      // are open.
       Text {
-        visible: text !== ""
+        visible: text !== "" && !root.gearShown
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: Model.osGlyph(root.info.os)
@@ -112,7 +120,26 @@ Item {
         font.pixelSize: Style.font.bodySmall
         renderType: Text.NativeRendering
       }
+
+      IconButton {
+        visible: root.gearShown
+        width: Style.space(18)
+        height: Style.space(18)
+        anchors.verticalCenter: parent.verticalCenter
+        glyph: Glyphs.gear
+        glyphSize: Style.font.bodySmall
+        selected: root.settingsOpen
+        color: root.settingsOpen ? Commons.Color.accent : root.foreground
+        fontFamily: root.fontFamily
+        onClicked: {
+          if (!root.service) return
+          if (root.settingsOpen) root.service.closeSettings()
+          else root.service.openSettings(root.machine.id)
+        }
+      }
     }
+
+    HoverHandler { id: headerHover }
   }
 
   Column {
@@ -129,46 +156,22 @@ Item {
       spacing: Style.space(2)
       opacity: root.status === "stale" ? 0.45 : 1
 
-      MetricRow {
-        width: parent.width
-        label: "CPU"
-        kind: "bars"
-        series: [root.hist.cpuUser || [], root.hist.cpuSys || []]
-        colors: [root.s1, root.s2]
-        figure: root.sample ? Model.percentText(root.sample.cpu) : ""
-        figureWidth: root.figureWidth
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-      }
+      Repeater {
+        model: root.showRows ? root.readoutList : []
 
-      MetricRow {
-        width: parent.width
-        label: "MEM"
-        kind: "bars"
-        series: [root.hist.mem || []]
-        colors: [root.s1]
-        figure: root.sample ? Model.percentText(root.sample.memPercent) : ""
-        figureSecond: root.sample && root.sample.memTotal > 0 ? Model.compactPair(root.sample.memUsed, root.sample.memTotal) : ""
-        secondColor: root.dim
-        figureWidth: root.figureWidth
-        foreground: root.foreground
-        fontFamily: root.fontFamily
-      }
-
-      MetricRow {
-        width: parent.width
-        label: "NET"
-        kind: "mirror"
-        up: root.hist.tx || []
-        down: root.hist.rx || []
-        upColor: root.s2
-        downColor: root.s1
-        twoLine: true
-        figure: root.sample ? "↑ " + Model.compactRate(root.sample.tx) : ""
-        figureSecond: root.sample ? "↓ " + Model.compactRate(root.sample.rx) : ""
-        figureWidth: root.figureWidth
-        foreground: root.foreground
-        fontFamily: root.fontFamily
+        delegate: Readout {
+          required property var modelData
+          width: parent.width
+          entry: modelData
+          machine: root.machine
+          link: root.link
+          service: root.service
+          labelMode: root.service ? root.service.labelMode : "text"
+          temperatureUnit: root.service ? root.service.temperatureUnit : "Celsius"
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          figureWidth: root.figureWidth
+        }
       }
     }
 

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "supercleanse.vitals",
   "name": "Vitals",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Blair Williams",
   "license": "MIT",
-  "description": "A compact multi-machine system monitor: CPU, memory and network for this machine and any others you can reach over SSH, in a narrow sidebar docked to a screen edge or in its own window. Agentless: nothing is installed on the remote machines. Works with Linux and macOS remotes.",
+  "description": "A compact multi-machine system monitor in the OmaStats style: CPU, GPU, memory, disks, network, sensors and battery for this machine and any others you can reach over SSH, chosen per machine, in a narrow sidebar docked to a screen edge or in its own window. Agentless: nothing is installed on the remote machines. Works with Linux and macOS remotes.",
   "homepage": "https://github.com/SuperCleanse/omarchy-vitals",
   "kinds": [
     "service",
@@ -18,7 +18,7 @@
   },
   "barWidget": {
     "displayName": "Vitals",
-    "description": "A pulse icon that shows or hides the Vitals sidebar: CPU, memory and network graphs for every machine you add, over SSH.",
+    "description": "A pulse icon that shows or hides the Vitals sidebar: CPU, GPU, memory, disk, network, sensor and battery readouts for every machine you add, over SSH, configurable per machine.",
     "category": "System",
     "aliases": [
       "vitals",
@@ -29,7 +29,12 @@
       "ssh",
       "cpu",
       "memory",
-      "network"
+      "network",
+      "disk",
+      "battery",
+      "gpu",
+      "sensors",
+      "temperature"
     ],
     "allowMultiple": false,
     "defaultSection": "right",
@@ -41,7 +46,11 @@
       "refreshSeconds": "2",
       "historySeconds": 120,
       "sampleWhileHidden": false,
-      "barReadout": "icon"
+      "barReadout": "icon",
+      "modules": "cpu,memory,network",
+      "style": "both",
+      "barLabels": "text",
+      "temperatureUnit": "Celsius"
     },
     "schema": [
       {
@@ -124,6 +133,48 @@
           "count"
         ],
         "defaultValue": "icon"
+      },
+      {
+        "key": "modules",
+        "type": "string",
+        "label": "Default readouts",
+        "description": "Comma-separated, in order: cpu, gpu, memory, disks, network, sensors, battery. Machines without their own readouts (set from a card's gear) show these.",
+        "defaultValue": "cpu,memory,network"
+      },
+      {
+        "key": "style",
+        "type": "enum",
+        "label": "Default look",
+        "description": "How readouts draw unless a machine sets its own: graph, ring, text (figure), both (graph and figure), or ring-text (ring and figure).",
+        "options": [
+          "both",
+          "graph",
+          "ring",
+          "text",
+          "ring-text"
+        ],
+        "defaultValue": "both"
+      },
+      {
+        "key": "barLabels",
+        "type": "enum",
+        "label": "Labels",
+        "description": "Stacked letters (CPU, MEM, NET) like OmaStats, or icons.",
+        "options": [
+          "text",
+          "icon"
+        ],
+        "defaultValue": "text"
+      },
+      {
+        "key": "temperatureUnit",
+        "type": "enum",
+        "label": "Temperature unit",
+        "options": [
+          "Celsius",
+          "Fahrenheit"
+        ],
+        "defaultValue": "Celsius"
       }
     ]
   }

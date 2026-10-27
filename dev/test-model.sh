@@ -13,7 +13,7 @@ const vm = require('vm')
 // QML's `.pragma library` line is not JavaScript; drop it and load as CommonJS.
 const src = fs.readFileSync(path.join(process.env.REPO, 'Model.js'), 'utf8').replace(/^\.pragma library\s*$/m, '')
 const module = { exports: {} }
-vm.runInNewContext(src, { module, console, Date, Math, JSON })
+vm.runInNewContext(src, { module, console, Date, Math, JSON, String })
 const M = module.exports
 
 let n = 0
@@ -73,11 +73,11 @@ eq(M.parseMachinesFile('{ nope').ok, false, 'invalid JSON is reported, not throw
 eq(M.displayAlias({ id: 'local', alias: '' }, 'studio.local'), 'studio', 'local alias falls back to the short hostname')
 
 // commands
-eq(M.localCommand('/p/s.sh', 2), ['/bin/sh', '/p/s.sh', '2'], 'local command')
+eq(M.localCommand('/p/s.sh', 2), ['/bin/sh', '/p/s.sh', '2', '', 'cpu'], 'local command')
 const rc = M.remoteCommand('/p/s.sh', 'studio-mini', 2)
 eq(rc.slice(0, 5), ['/bin/sh', '-c', 'f=$1; shift; exec ssh "$@" < "$f"', 'vitals-ssh', '/p/s.sh'], 'remote wrapper redirects the sampler into ssh')
 ok(rc.includes('BatchMode=yes') && rc.includes('ConnectTimeout=8') && rc.includes('ServerAliveInterval=10') && rc.includes('ServerAliveCountMax=2'), 'ssh options present')
-eq(rc.slice(rc.indexOf('--')), ['--', 'studio-mini', 'sh', '-s', '--', '2'], 'destination follows -- and the remote runs sh -s')
+eq(rc.slice(rc.indexOf('--')), ['--', 'studio-mini', 'sh', '-s', '--', '2', '-', 'cpu'], 'destination follows -- and the remote runs sh -s')
 eq([1, 2, 3, 4, 5, 6, 9].map(M.backoffMs), [2000, 4000, 8000, 16000, 30000, 30000, 30000], 'backoff doubles up to 30 s')
 eq(M.staleAfterMs(2), 8000, 'stale floor')
 eq(M.staleAfterMs(10), 30000, 'stale scales with interval')
@@ -112,6 +112,66 @@ eq(M.compactPair(18.3 * GB, 32 * GB), '18/32G', 'memory pair rounds from 10 up')
 eq(M.compactPair(3.14 * GB, 8 * GB), '3.1/8G', 'memory pair keeps a decimal below 10')
 eq(M.compactPair(412 * 1024 ** 2, 8 * GB), '412M/8G', 'mixed units')
 eq(M.percentText(57.4), '57%', 'percent')
+
+// ---- version 2: per-machine readouts
+const v1 = '{ "version": 1, "machines": [ { "id": "local", "alias": "", "host": "", "enabled": true }, { "id": "studio-mini", "alias": "studio-mini", "host": "studio-mini" } ] }'
+const p1 = M.parseMachinesFile(v1)
+eq([p1.ok, p1.version], [true, 1], 'a version 1 file parses and reports its version')
+eq(M.machineModules(p1.machines[1], ['cpu', 'memory', 'network']), ['cpu', 'memory', 'network'], 'a v1 machine follows the default modules')
+const v2text = M.serializeMachines(p1.machines)
+eq(JSON.parse(v2text).version, 2, 'serializing writes version 2')
+eq(JSON.parse(v2text).machines[1], { id: 'studio-mini', alias: 'studio-mini', host: 'studio-mini', enabled: true }, 'migration adds nothing a machine did not set')
+let mm = M.updateMachine(p1.machines, 'studio-mini', { modules: ['gpu', 'cpu', 'bogus', 'gpu'], styles: { cpu: 'ring-text', network: 'nonsense' }, disks: [{ disk: 'all', show: 'used' }, { disk: 'bad name' }], sensors: ['cpu', 'nvme/temp1', 'x"y'], gpus: 'all' })
+const sm = mm[1]
+eq(sm.modules, ['gpu', 'cpu'], 'modules are deduped and filtered')
+eq(sm.styles, { cpu: 'ring-text' }, 'invalid looks dropped')
+eq(sm.disks, [{ disk: 'all', show: 'used' }], 'invalid disk names dropped')
+eq(sm.sensors, ['cpu', 'nvme/temp1'], 'invalid sensor ids dropped')
+eq(M.parseMachinesFile(M.serializeMachines(mm)).machines[1], sm, 'v2 round trip keeps readout settings')
+mm = M.upsertMachine(mm, { id: 'studio-mini', alias: 'studio', host: 'me@studio-mini' }).machines
+eq(mm[1].modules, ['gpu', 'cpu'], 'renaming keeps readout settings')
+eq(M.resetReadouts(mm, 'studio-mini')[1], { id: 'studio-mini', alias: 'studio', host: 'me@studio-mini', enabled: true }, 'reset clears readout settings')
+eq(M.updateMachine(mm, 'studio-mini', { modules: null })[1].modules, undefined, 'null goes back to the default')
+
+eq(M.parseModules('mem, net ,disk,bogus,cpu'), ['memory', 'network', 'disks', 'cpu'], 'module aliases')
+eq(M.fitStyle('network', 'ring'), 'graph', 'network has no ring')
+eq(M.fitStyle('sensors', 'both'), 'text', 'sensors are figures only')
+eq(M.fitStyle('battery', 'both'), 'ring-text', 'battery has a ring but no graph')
+eq(M.fitStyle('disks', 'ring-text'), 'both', 'disk looks fold to picture/figure')
+eq(M.styleOptions('network').map(o => o.value), ['graph', 'text', 'both'], 'network look choices')
+eq(M.machineStyle({ styles: { cpu: 'ring' } }, 'cpu', 'both'), 'ring', 'per-machine look wins')
+eq(M.machineStyle({}, 'memory', 'text'), 'text', 'global default look applies')
+
+const macInfo = { os: 'macos', caps: { gpu: true, disks: true, sensors: false, battery: false }, gpus: [{ id: 'apple', vendor: 'apple' }], sensors: [] }
+eq(M.moduleAvailable('battery', macInfo), false, 'no battery on a desktop Mac')
+eq(M.unavailableReason('sensors', macInfo), 'Unavailable on macOS without a helper', 'macOS sensors reason')
+eq(M.moduleAvailable('battery', {}), true, 'before the first hello every module is offered')
+const ro = M.readouts({ modules: ['cpu', 'battery', 'gpu', 'disks', 'sensors'], disks: [{ disk: 'all', show: 'speed' }, { disk: 'nvme0n1', show: 'used' }], showGpuMemory: true }, macInfo, null, 'both')
+eq(ro.map(r => r.key), ['cpu', 'gpu:apple', 'vram:apple', 'disk:all', 'disk:nvme0n1'], 'readouts skip what the machine lacks and expand disks and GPUs')
+eq(ro[3].label + ro[4].label, 'DSKNV0', 'several disks get short tags')
+eq(M.samplerExtras({ modules: ['network', 'battery', 'cpu', 'gpu'] }), 'gpu,battery', 'only the costly modules go to the sampler')
+eq(M.samplerExtras({}, ['cpu', 'memory', 'network']), '', 'defaults cost nothing extra')
+eq(M.machineSensors({}, { sensors: [{ id: 'nvme/temp1' }, { id: 'battery' }] }), ['battery'], 'default sensor prefers cpu or battery')
+eq(M.localCommand('/s', 2, 'gpu,disks', 'cpu,nvme/temp1'), ['/bin/sh', '/s', '2', 'gpu,disks', 'cpu,nvme/temp1'], 'local command carries extras and sensors')
+const rc2 = M.remoteCommand('/s', 'build-box', 2, '', 'cpu')
+eq(rc2.slice(-6), ['sh', '-s', '--', '2', '-', 'cpu'], 'remote command keeps an empty extras slot')
+
+const hello = M.parseLine(JSON.stringify({ type: 'hello', v: 2, os: 'linux', cores: 8, caps: { gpu: true, disks: true, sensors: true, battery: false }, gpus: [{ id: '0000:03:00.0', name: 'AMD GPU', vendor: 'amd', util: true }], disks: ['nvme0n1'], sensors: [{ id: 'cpu', label: 'CPU temperature', kind: 'temp' }, { id: 'dell_smm/fan1', label: 'Dell fan1', kind: 'fan' }] }))
+eq(hello.caps, { gpu: true, disks: true, sensors: true, battery: false }, 'hello capabilities')
+eq(M.parseLine('{"type":"hello","os":"linux","cores":4}').caps, null, 'a version 1 hello has no capabilities')
+const smp = M.parseLine(JSON.stringify({ type: 'sample', cpu: 5, memUsed: 1, memTotal: 2, gpus: [{ id: '0000:03:00.0', util: 40, mhz: null, temp: 51.5, memUsed: 1024, memTotal: 4096 }], disk: { read: 100, write: 50, per: { nvme0n1: [100, 50] }, space: { all: [25, 100] } }, temps: { cpu: 47.5 }, fans: { 'dell_smm/fan1': 0 }, battery: { percent: 80, status: 'Discharging', toEmpty: 95, toFull: null } }))
+eq(M.gpuSample(smp, '0000:03:00.0').util, 40, 'gpu sample')
+eq(M.diskRates(smp, 'nvme0n1'), [100, 50], 'per-disk rates')
+eq(M.diskSpace(smp, 'all'), [25, 100], 'disk space')
+eq(M.sensorReading(smp, hello, 'cpu', 'Celsius').text, '48°', 'temperature reading')
+eq(M.sensorReading(smp, hello, 'cpu', 'Fahrenheit').text, '118°', 'fahrenheit')
+eq(M.sensorReading(smp, hello, 'dell_smm/fan1', 'Celsius').text, 'off', 'a stopped fan reads off')
+eq(M.sensorReading(smp, hello, 'nvme/temp1', 'Celsius'), null, 'an unreported sensor shows nothing')
+eq(smp.battery.toEmpty, 95, 'battery time to empty')
+let hh = M.pushSample(M.emptyHistory(), smp, 10)
+hh = M.pushSample(hh, smp, 10)
+eq([hh.gpu['0000:03:00.0'].length, hh.gpuMem['0000:03:00.0'][0], hh.diskRead.nvme0n1.length, hh.battery.length], [2, 25, 2, 2], 'histories for gpu, vram, disks and battery')
+eq(M.trimHistory(hh, 1).diskWrite.all.length, 1, 'keyed histories trimmed')
 
 console.log('# ' + n + ' passed')
 JS

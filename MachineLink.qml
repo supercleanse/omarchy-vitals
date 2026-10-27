@@ -15,6 +15,10 @@ Item {
   property string host: ""
   property string samplerPath: ""
   property real intervalSeconds: 2
+  // Costlier modules to sample (gpu, disks, sensors, battery) and the sensor
+  // ids to read, as the sampler's second and third arguments.
+  property string extras: ""
+  property string sensorIds: "cpu"
   property int historyLength: 60
   property bool active: false
 
@@ -32,8 +36,8 @@ Item {
 
   readonly property bool hasData: sample !== null
   readonly property var command: isLocal
-    ? Model.localCommand(samplerPath, intervalSeconds)
-    : Model.remoteCommand(samplerPath, host, intervalSeconds)
+    ? Model.localCommand(samplerPath, intervalSeconds, extras, sensorIds)
+    : Model.remoteCommand(samplerPath, host, intervalSeconds, extras, sensorIds)
 
   function start() {
     if (destroying || !active || !samplerPath) return

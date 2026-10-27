@@ -46,6 +46,8 @@ ln -sfn "$HOME/.local/state/omarchy/current/theme" "$home/.local/state/omarchy/c
 
 if (( $# )); then
   mkdir -p "$home/.config/vitals" "$home/.local/state/vitals"
+  # A version 1 file, as Vitals 0.1 wrote it, so each run also checks the
+  # migration to version 2 (and the machines.v1.json backup).
   {
     printf '{ "version": 1, "machines": [ { "id": "local", "alias": "", "host": "", "enabled": true }'
     for dest in "$@"; do printf ', { "alias": "%s", "host": "%s" }' "$dest" "$dest"; done
@@ -56,6 +58,37 @@ fi
 
 # Exercise the IPC target against this private instance (never the real
 # shell: a different runtime dir and config path) partway through the run.
+count_machines() {
+  env -u WAYLAND_DISPLAY -u DISPLAY XDG_RUNTIME_DIR="$work/runtime" timeout 5 \
+    qs ipc -p "$work/config" call supercleanse.vitals status 2>/dev/null | jq '.machines | length' 2>/dev/null
+}
+# VITALS_EDIT_TEST=1: rewrite machines.json from outside, the way a person
+# does with `cat > file`, then a second time with an editor-style rename, and
+# check the running instance picked up each change without a refresh call.
+if [[ ${VITALS_EDIT_TEST:-0} == 1 ]]; then
+  (
+    cfg=$scratch/home/.config/vitals/machines.json
+    sleep 5
+    echo "edit-test: machines before: $(count_machines)"
+    cat > "$cfg" <<'JSON'
+{ "version": 2, "machines": [ { "id": "local", "alias": "", "host": "" }, { "id": "edit-a", "alias": "edit-a", "host": "edit-a.invalid", "enabled": false }, { "id": "edit-c", "alias": "edit-c", "host": "edit-c.invalid", "enabled": false }, { "id": "edit-d", "alias": "edit-d", "host": "edit-d.invalid", "enabled": false } ] }
+JSON
+    sleep 3
+    echo "edit-test: after cat > (expect 4): $(count_machines)"
+    tmp=$cfg.tmp
+    printf '%s\n' '{ "version": 2, "machines": [ { "id": "local", "alias": "", "host": "" }, { "id": "edit-a", "alias": "edit-a", "host": "edit-a.invalid", "enabled": false }, { "id": "edit-b", "alias": "edit-b", "host": "edit-b.invalid", "enabled": false } ] }' > "$tmp"
+    mv "$tmp" "$cfg"
+    sleep 3
+    echo "edit-test: after rename (expect 3): $(count_machines)"
+    cat > "$cfg" <<'JSON'
+{ "version": 2, "machines": [ { "id": "local", "alias": "", "host": "" } ] }
+JSON
+    sleep 3
+    echo "edit-test: after second cat > (expect 1): $(count_machines)"
+  ) &
+  edit_pid=$!
+fi
+
 (
   sleep 7
   for call in status window close open toggle toggle edit refresh status; do
@@ -78,8 +111,10 @@ env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION
   QS_NO_RELOAD_POPUP=1 \
   VITALS_OUT="$scratch" \
   VITALS_WAIT_MS="${VITALS_WAIT_MS:-14000}" \
+  VITALS_MODULES="${VITALS_MODULES:-}" \
   timeout 90 qs -p "$work/config" 2>&1 | grep -v -e 'Failed to start IPC server' -e 'does not support setting window masks' || true
 
 wait "$ipc_pid" 2>/dev/null || true
+[[ -n ${edit_pid:-} ]] && wait "$edit_pid" 2>/dev/null || true
 echo "--- files written under the scratch HOME"
 find "$home/.config/vitals" "$home/.local/state/vitals" -type f -print -exec cat {} \; 2>/dev/null || true

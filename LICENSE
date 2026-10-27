@@ -23,8 +23,10 @@ SOFTWARE.
 ---------------------------------------------------------------------------
 Third-party notice
 
-ui/StackLabel.qml, ui/HistoryGraph.qml, ui/MirrorGraph.qml and the
-formatting and palette helpers in Model.js are adapted from OmaStats
+ui/StackLabel.qml, ui/HistoryGraph.qml, ui/MirrorGraph.qml, ui/MiniRing.qml,
+ui/Card.qml, ui/SectionTitle.qml, the layout and controls of
+ui/MachineSettings.qml, and the module, look, formatting, sensor and palette
+helpers in Model.js are adapted from OmaStats
 (https://github.com/crmne/omastats), used under the MIT License:
 
 Copyright (c) 2026 Carmine Paolino

@@ -1,33 +1,69 @@
 # Vitals for Omarchy
 
-A compact system monitor for several machines at once. Vitals shows CPU, memory
-and network for this machine and for any other machine you can reach over SSH.
+A compact system monitor for several machines at once. Vitals shows CPU, GPU,
+memory, disks, network, sensors and battery for this machine and for any other
+machine you can reach over SSH, and you choose which of those each machine shows.
 It sits in a narrow sidebar docked to a screen edge, or in its own window. The
 remote side needs nothing installed: a small shell script is streamed over SSH
 and runs with the tools every Linux and macOS system already has.
 
-The readouts follow [OmaStats](https://github.com/crmne/omastats): stacked
-letter labels, thin bar-history graphs, and colors taken from your Omarchy
-theme, so Vitals looks at home beside OmaStats in the bar.
+The readouts follow [OmaStats](https://github.com/crmne/omastats): the same
+modules, the same looks (graph, ring, figure, or a mix), stacked letter labels
+or icons, and colors taken from your Omarchy theme, so Vitals looks at home
+beside OmaStats in the bar. Each machine's settings page is modeled on OmaStats'
+own.
 
-![The Vitals sidebar docked on the right, with the machine list and the add-machine form](preview.png)
+![The Vitals sidebar docked on the right, with one machine's settings open beside it](preview.png)
 
 ## What it shows
 
-Each machine gets a compact card:
+Each machine gets a compact card: a status dot, the machine's name, its core
+count and an OS glyph, then one row per readout you picked for it, in your
+order. Hover the header and the OS glyph turns into a gear that opens that
+machine's settings.
 
-- **Header.** A status dot, the machine's name, its core count and an OS glyph.
-- **CPU.** Usage history (user and system stacked) and the current percentage.
-- **MEM.** Used memory history, the percentage, and used/total.
-- **NET.** Upload above the midline and download below it, with current rates.
+| Readout | What it shows |
+|:--|:--|
+| **CPU** | Usage history (user and system stacked), a ring, the percentage; load average beside a ring |
+| **GPU** | Load history and percentage per GPU; a GPU that reports no load (Intel) shows its clock instead. Optional VRAM readout |
+| **MEM** | Used memory history, the percentage, and used/total |
+| **DSK** | Per disk, or all disks together: read above the midline and write below it with rates, and/or a ring for space used |
+| **NET** | Upload above the midline and download below it, with current rates |
+| **Sensors** | The temperatures and fans you pick, each with its own label |
+| **BAT** | A ring for the charge, the percentage, and time left or time to full |
 
-The status dot uses the theme's colors: online, connecting or stale, offline.
-A machine that can't be reached shows **offline · reconnecting**, the reason
-(for example "Host not found" or "SSH key not accepted"), and a countdown to
-the next try. Vitals never shows numbers it doesn't have.
+Every readout takes one of the OmaStats looks: **graph**, **ring**, **figure**,
+**graph and figure**, or **ring and figure** (rings only where a fill level
+means something). Labels can be stacked letters or icons, and temperatures °C
+or °F.
+
+![Every look side by side, then icon labels](dev/renders/looks-matte-black.png)
+
+A readout a machine can't report is left off its card, never filled in: a
+desktop has no battery row, a machine without a GPU no GPU row. The status dot
+uses the theme's colors: online, connecting or stale, offline. A machine that
+can't be reached shows **offline · reconnecting**, the reason (for example
+"Host not found" or "SSH key not accepted"), and a countdown to the next try.
+Vitals never shows numbers it doesn't have.
 
 The cards stay legible at 180 to 220 pixels wide. With more machines than fit,
 the sidebar scrolls.
+
+### What each readout uses
+
+| Readout | Linux | macOS (no root) |
+|:--|:--|:--|
+| CPU | `/proc/stat` | `iostat` (whole percents) |
+| Memory | `/proc/meminfo`, total minus available | `vm_stat`: app memory plus wired plus compressed, as Activity Monitor counts it |
+| Network | `/proc/net/dev`, interfaces backed by a real device | `netstat -ibn`, `en*` interfaces |
+| GPU | AMD: `gpu_busy_percent`, VRAM and temperature from sysfs. NVIDIA: `nvidia-smi`. Intel: clock only (the kernel reports no load) | Apple GPU load from `ioreg` IOAccelerator "Device Utilization %", plus GPU memory in use |
+| Disks | `/proc/diskstats` per whole disk; space from `df`, mapped through partitions, LUKS and LVM to the disk underneath | Read and write from `ioreg` IOBlockStorageDriver, all disks together; space of the startup volume's container from `df` |
+| Sensors | Every hwmon temperature and fan (`/sys/class/hwmon`), plus "CPU temperature" for the CPU package | Battery temperature only. CPU and GPU temperatures and fan speeds need root (or a helper app) on macOS, so Vitals offers no others there and says so on the settings page |
+| Battery | `/sys/class/power_supply` (the system battery, not mice or headsets) | `ioreg` AppleSmartBattery |
+
+A GPU that runtime power management has put to sleep is reported as idle
+without being woken, and its sensors are skipped, so a laptop's dGPU stays
+asleep.
 
 ## Requirements
 
@@ -75,11 +111,34 @@ rm -rf ~/.config/vitals ~/.local/state/vitals   # machine list and open/closed s
 | Right-click the bar icon | Open Vitals in edit mode |
 | Refresh button in the sidebar | Reconnect any offline machine now |
 | Pencil button | Edit the machine list |
+| Gear on a card's header | Open that machine's settings |
 
 In edit mode each machine has a checkbox to switch it on or off, buttons to
-move it up or down, edit it or remove it, and an **Add machine** button below
-the list. The local machine can be renamed and switched off but not removed.
-Its name defaults to the short hostname.
+move it up or down, open its settings or remove it, and an **Add machine**
+button below the list. The local machine can be renamed and switched off but
+not removed. Its name defaults to the short hostname.
+
+### A machine's settings
+
+The settings page follows OmaStats' Settings page, control for control. In
+dock mode it opens in a popout beside the sidebar; in window mode it takes the
+window's place until you close it.
+
+- **Machine.** Its name and SSH destination, and whether it is shown.
+- **Readouts.** A switch per readout the machine has, in card order, with
+  buttons to move it up or down and a **Look** for each. Disks list every disk
+  the machine reported plus "All disks", each showing speed, space used, or
+  both. Sensors list every temperature and fan it reported. A machine with
+  several GPUs lists them, and **Show VRAM** adds a memory readout per GPU.
+  Readouts the machine doesn't have are listed underneath with the reason, such
+  as "No battery" or "Unavailable on macOS without a helper".
+  **Reset to defaults** returns the machine to the default readouts.
+- **All machines.** Letters or icons for labels, °C or °F, and the default look.
+
+Changes apply and save straight away. A machine that has never connected offers
+every readout until its first report says what it has.
+
+![Settings for a Linux laptop and for a desktop Mac](dev/renders/settings-linux-matte-black.png)
 
 ### IPC and keybinding
 
@@ -91,6 +150,7 @@ omarchy-shell supercleanse.vitals dock      # switch to the docked sidebar and s
 omarchy-shell supercleanse.vitals window    # switch to window mode and show it
 omarchy-shell supercleanse.vitals refresh   # reconnect anything offline, reread machines.json
 omarchy-shell supercleanse.vitals edit      # show in edit mode
+omarchy-shell supercleanse.vitals settings local   # open a machine's settings by id
 omarchy-shell supercleanse.vitals status    # JSON: every machine, its state and latest figures
 ```
 
@@ -133,6 +193,13 @@ entry in `~/.config/omarchy/shell.json`.
 | `historySeconds` | `120` | How much history the graphs keep (30 to 900) |
 | `sampleWhileHidden` | `false` | Keep sampling while Vitals is hidden. Graphs then have history when you open it, and the bar icon turns the theme's danger color when a machine drops off |
 | `barReadout` | `icon` | `icon`, or `count` to add online/total beside the icon while sampling |
+| `modules` | `cpu,memory,network` | Default readouts, in order, for machines without their own |
+| `style` | `both` | Default look: `graph`, `ring`, `text`, `both` or `ring-text` |
+| `barLabels` | `text` | `text` for stacked letters, `icon` for glyphs |
+| `temperatureUnit` | `Celsius` | `Celsius` or `Fahrenheit` |
+
+Per-machine readouts live in `machines.json` (below) and override `modules`
+and `style` for that machine.
 
 By default Vitals only samples while it is visible. Hiding it closes every SSH
 session.
@@ -146,11 +213,16 @@ Vitals rereads it when it changes.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "machines": [
-    { "id": "local", "alias": "", "host": "", "enabled": true },
+    { "id": "local", "alias": "", "host": "", "enabled": true,
+      "modules": ["cpu", "gpu", "memory", "disks", "network", "sensors", "battery"],
+      "sensors": ["cpu", "nvme/temp1"] },
     { "id": "studio-mini", "alias": "studio-mini", "host": "studio-mini", "enabled": true },
-    { "id": "build-box", "alias": "build-box", "host": "builder@100.101.102.103", "enabled": true },
+    { "id": "build-box", "alias": "build-box", "host": "builder@100.101.102.103", "enabled": true,
+      "modules": ["cpu", "memory", "disks", "network"],
+      "styles": { "cpu": "ring-text", "memory": "ring-text" },
+      "disks": [{ "disk": "all", "show": "used" }] },
     { "id": "nas", "alias": "nas", "host": "nas.example-tailnet.ts.net", "enabled": false }
   ]
 }
@@ -164,8 +236,27 @@ Vitals rereads it when it changes.
 - `enabled: false` keeps a machine in the list without showing or sampling it.
 - The order of the list is the order of the cards.
 
-If the file stops being valid JSON, Vitals shows only this machine and a note
-asking you to fix it. It never overwrites a file it couldn't read.
+Readout keys, all optional (a missing key follows the defaults):
+
+| Key | Meaning |
+|:--|:--|
+| `modules` | Readouts in card order: `cpu`, `gpu`, `memory`, `disks`, `network`, `sensors`, `battery` |
+| `styles` | Look per readout, such as `{ "cpu": "ring-text" }` |
+| `disks` | `[{ "disk": "all" or a device like "nvme0n1", "show": "speed", "used" or "both" }]` |
+| `sensors` | Sensor ids from the settings page, such as `cpu`, `nvme/temp1`, `dell_smm/fan1`, or `battery` on a Mac |
+| `gpus` | `"all"` or a list of GPU ids (PCI addresses) |
+| `showGpuMemory` | `true` to add a VRAM readout beside each GPU |
+
+A version 1 file (from Vitals 0.1) is upgraded the first time Vitals reads it:
+the machines keep their names and destinations, gain no readout keys, and so
+follow the defaults. The original is kept beside it as `machines.v1.json`.
+
+Vitals picks up edits made by hand, with any editor or `cat >`, without a
+refresh. It waits out the moment a rewrite leaves the file empty, and it also
+checks the file every few seconds in case a change slips past the watch.
+
+If the file stops being valid JSON, Vitals keeps showing the last good list
+with a note asking you to fix the file, and saves nothing to it until you do.
 
 Whether Vitals is open is remembered in `~/.local/state/vitals/state.json`.
 
@@ -213,7 +304,12 @@ marked **stale** after three missed samples.
 - Tested on macOS 26 (Apple silicon).
 - Turn on **System Settings › General › Sharing › Remote Login**.
 - Vitals uses only built-in tools: `iostat`, `vm_stat`, `netstat`, `sysctl`,
-  `sw_vers` and `scutil`.
+  `sw_vers`, `scutil`, and `ioreg` and `df` for the GPU, disk and battery
+  readouts. Nothing needs root.
+- Temperatures: only the battery's (MacBooks). macOS hands CPU and GPU
+  temperatures and fan speeds only to root or to a compiled helper using
+  private frameworks, which Vitals doesn't install; desktop Macs list the
+  sensors readout as unavailable.
 - Memory "used" is App Memory plus Wired plus Compressed, the same figure
   Activity Monitor shows as Memory Used. It leaves out file cache, which
   `top`'s PhysMem counts.
@@ -234,22 +330,40 @@ marked **stale** after three missed samples.
 ## How it works
 
 - **One process per machine.** The local machine runs
-  `sh sampler/vitals-sampler.sh <interval>`. A remote one runs the ssh command
-  above, with the same script streamed over stdin. Nothing is copied to or left
-  on the remote machine. When Vitals stops a session, the remote loop exits on
-  its next write.
-- **The sampler** is about 230 lines of POSIX sh. It detects the OS with
-  `uname`, prints a `hello` line (OS, hostname, core count), then one JSON line
-  per interval:
+  `sh sampler/vitals-sampler.sh <interval> <extras> <sensors>`. A remote one
+  runs the ssh command above, with the same script streamed over stdin and the
+  same arguments. Nothing is copied to or left on the remote machine. When
+  Vitals stops a session, the remote loop exits on its next write.
+- **Only what you show is sampled.** CPU, memory and network are always read;
+  `extras` names the costlier readouts a machine has switched on (`gpu`,
+  `disks`, `sensors`, `battery`) and `sensors` the sensor ids to read.
+  Changing a machine's readouts restarts its sampler with the new list.
+- **The sampler** is POSIX sh. It detects the OS with `uname`, prints a
+  `hello` line (OS, hostname, core count, which readouts the machine has, and
+  its GPUs, disks and sensors), then one JSON line per interval:
 
   ```json
-  {"type":"sample","cpu":12.3,"user":8.1,"sys":4.2,"memUsed":13404160000,"memTotal":34359738368,"rx":5120,"tx":2048,"load":0.42}
+  {"type":"sample","cpu":12.3,"user":8.1,"sys":4.2,"memUsed":13404160000,"memTotal":34359738368,"rx":5120,"tx":2048,"load":0.42,
+   "gpus":[{"id":"0000:03:00.0","util":22,"mhz":1450,"temp":51.0,"memUsed":2684354560,"memTotal":8589934592}],
+   "disk":{"read":81920,"write":40960,"per":{"nvme0n1":[81920,40960]},"space":{"all":[442381631488,1073741824000]}},
+   "temps":{"cpu":52.5},"fans":{"thinkpad/fan1":2650},
+   "battery":{"percent":76,"status":"Discharging","toEmpty":214,"toFull":null}}
   ```
 
-- **Cost.** On Linux, each sample reads `/proc` with shell builtins, and `sleep`
-  is the only process it starts: about 13 ms of CPU per sample. On macOS, each
-  sample runs `iostat` (which also does the waiting), `vm_stat`, `netstat` and
-  one `awk`: about 40 ms of CPU, or 2% of one core at the default 2 seconds.
+- **Cost**, measured as CPU time per sample on the machines Vitals was tested
+  with (Linux laptop, three Apple silicon Macs):
+
+  | | Default readouts (CPU, memory, network) | All seven |
+  |:--|:--|:--|
+  | Linux | about 7 ms | about 15 ms |
+  | macOS | 30 to 47 ms | about 85 to 90 ms |
+
+  At the default 2-second interval that is under 1% of one core on Linux and
+  about 2% (defaults) to 4.5% (everything) of one core on a Mac. On Linux the
+  readouts read sysfs and `/proc` with shell builtins; `df` runs every 30
+  seconds and `nvidia-smi` only when an NVIDIA GPU is awake. On macOS each extra
+  readout adds one `ioreg` call; disk space (`df`) is read every 30 seconds and
+  the battery every 10.
 - **The service** (`VitalsService.qml`) owns the list, one connection per
   enabled machine, the sidebar or window, and the IPC target. It reconnects
   with backoff and keeps each machine's history in memory.
@@ -272,10 +386,12 @@ Run the checks. None of them opens a window on your desktop.
 ```sh
 dev/test-model.sh                     # unit tests for Model.js (needs node)
 dev/test-sampler.sh                   # run the sampler here and check its output
-dev/test-sampler.sh studio-mini       # ...and stream it to a remote too (read-only)
+dev/test-sampler.sh studio-mini       # ...and stream it to a remote too (read-only), every readout on
 dev/render.sh --fake-data             # render every view to dev/renders/*.png
 dev/render.sh --fake-data --theme tokyo-night
 dev/load-check.sh /tmp/vitals-check studio-mini   # load the real plugin and sample for a few seconds
+VITALS_MODULES=cpu,gpu,memory,disks,network,sensors,battery dev/load-check.sh /tmp/vitals-check studio-mini
+VITALS_EDIT_TEST=1 dev/load-check.sh /tmp/vitals-check   # edit machines.json from outside while it runs
 ```
 
 `dev/render.sh` runs a private Quickshell instance with
@@ -287,19 +403,25 @@ unreachable machine is shown as offline, never with made-up figures.
 
 `dev/load-check.sh` loads the real service and widget with a scratch `HOME`,
 lets the real samplers run, calls each IPC method on that private instance,
-and saves one PNG of the live view to the scratch directory. That PNG holds
+and saves one PNG of the live view to the scratch directory. It starts from a
+version 1 `machines.json`, so every run also checks the upgrade to version 2.
+`VITALS_MODULES` switches every machine to those readouts through the service;
+`VITALS_EDIT_TEST=1` rewrites the file with `cat >` and with a rename and
+checks each change is picked up. That PNG holds
 real host data, so the script refuses to write inside the repository.
 
 The docked sidebar's layer-shell behavior (the exclusive zone and tiling beside
-it) needs a running compositor. Offscreen rendering can't show it, so check it
-on a live session.
+it) and the settings popout's placement beside it need a running compositor.
+Offscreen rendering can't show them, so check them on a live session.
 
 ## Credits
 
 The look and several pieces are adapted from
 [OmaStats](https://github.com/crmne/omastats) by Carmine Paolino (MIT): the
-stacked letter label, the bar-history and mirrored graphs, the byte and rate
-formatting, and the way it picks a second graph hue from the theme. See
+module set and looks, the settings page's layout and controls, the stacked
+letter label, the bar-history and mirrored graphs, the ring gauge, the card and
+section title, the byte, rate and temperature formatting, the sensor and GPU
+selection, and the way it picks a second graph hue from the theme. See
 `LICENSE` for both notices.
 
 ## License

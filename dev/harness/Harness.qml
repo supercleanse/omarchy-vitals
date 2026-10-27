@@ -17,14 +17,20 @@ Scope {
   readonly property int barSize: Style.bar.sizeHorizontal
 
   FakeService { id: fakeDock }
-  FakeService { id: fakeMany; many: true }
+  FakeService { id: fakeMany; set: "many" }
   FakeService { id: fakeWindow; panelWidth: 220 }
+  FakeService { id: fakeWindowSettings; set: "mac"; panelWidth: 300; settingsId: "studio-mini" }
+  FakeService { id: fakeLooks; set: "looks" }
+  FakeService { id: fakeIcons; set: "looks"; labelMode: "icon"; temperatureUnit: "Fahrenheit" }
   FakeService { id: fakeEdit; editing: true }
   FakeService {
     id: fakeEditor
     editing: true
     editor: ({ id: "", alias: "studio-mini", host: "studio-mini", enabled: true })
   }
+  FakeService { id: fakeSettingsLinux; settingsId: "local" }
+  FakeService { id: fakeSettingsMac; set: "mac"; settingsId: "studio-mini" }
+  FakeService { id: fakePreview; settingsId: "local" }
   FakeService { id: fakeBarClosed; open: false; sampling: false }
   FakeService { id: fakeBarCount }
 
@@ -53,10 +59,31 @@ Scope {
   FakeBar { id: barOpen; service: fakeDock }
   FakeBar { id: barCount; service: fakeBarCount }
 
+  component SettingsFrame: Rectangle {
+    id: frame
+    property var service: null
+    width: 380
+    implicitHeight: page.implicitHeight + Style.spacing.popupPadding * 2 + 2
+    height: implicitHeight
+    radius: Style.cornerRadius
+    color: Commons.Color.popups.background
+    border.width: Math.max(1, Style.normalBorderWidth)
+    border.color: Commons.Color.popups.border
+
+    UI.MachineSettings {
+      id: page
+      x: Style.spacing.popupPadding
+      y: Style.spacing.popupPadding
+      width: frame.width - Style.spacing.popupPadding * 2
+      service: frame.service
+      machineId: frame.service ? frame.service.settingsId : ""
+    }
+  }
+
   FloatingWindow {
     id: stage
-    implicitWidth: 1500
-    implicitHeight: 1600
+    implicitWidth: 2600
+    implicitHeight: 2400
     color: Commons.Color.background
     visible: true
 
@@ -74,7 +101,7 @@ Scope {
       UI.VitalsView {
         id: dockScene
         x: 20; y: 20
-        width: 200; height: 720
+        width: 200; height: 1000
         service: fakeDock
         edge: "right"
       }
@@ -82,7 +109,7 @@ Scope {
       UI.VitalsView {
         id: manyScene
         x: 240; y: 20
-        width: 200; height: 720
+        width: 200; height: 1000
         service: fakeMany
         edge: "right"
       }
@@ -90,7 +117,7 @@ Scope {
       Rectangle {
         id: windowScene
         x: 460; y: 20
-        width: 224; height: 564
+        width: 224; height: 760
         color: "transparent"
         border.width: 2
         border.color: Commons.Color.accent
@@ -100,12 +127,30 @@ Scope {
           anchors.margins: 2
           service: fakeWindow
           showClose: false
+          inlineSettings: true
+        }
+      }
+
+      Rectangle {
+        id: windowSettingsScene
+        x: 700; y: 20
+        width: 304; height: 1000
+        color: "transparent"
+        border.width: 2
+        border.color: Commons.Color.accent
+
+        UI.VitalsView {
+          anchors.fill: parent
+          anchors.margins: 2
+          service: fakeWindowSettings
+          showClose: false
+          inlineSettings: true
         }
       }
 
       UI.VitalsView {
         id: editScene
-        x: 700; y: 20
+        x: 1020; y: 20
         width: 200; height: 460
         service: fakeEdit
         edge: "right"
@@ -113,15 +158,15 @@ Scope {
 
       UI.VitalsView {
         id: editorScene
-        x: 920; y: 20
-        width: 200; height: 460
+        x: 1240; y: 20
+        width: 200; height: 480
         service: fakeEditor
         edge: "right"
       }
 
       Rectangle {
         id: barScene
-        x: 1140; y: 20
+        x: 1020; y: 520
         width: 420; height: harness.barSize
         color: Commons.Color.bar.background
 
@@ -158,12 +203,60 @@ Scope {
         }
       }
 
-      // README preview: the bar's right end above the docked sidebar, then
-      // the machine list and the editor.
+      // Every look side by side: the same machine with all seven modules,
+      // set to each look in turn, then icons for labels.
+      Rectangle {
+        id: looksScene
+        x: 1460; y: 20
+        width: lookRow.implicitWidth + 20
+        height: lookRow.implicitHeight + 20
+        color: Commons.Color.bar.background
+
+        Row {
+          id: lookRow
+          x: 10; y: 10
+          spacing: 16
+
+          Repeater {
+            model: fakeLooks.machines.length + 1
+
+            delegate: Column {
+              required property int index
+              readonly property var svc: index < fakeLooks.machines.length ? fakeLooks : fakeIcons
+              readonly property var m: svc.machines[Math.min(index, svc.machines.length - 1)]
+              width: 180
+              spacing: 6
+
+              Text {
+                text: index < fakeLooks.machines.length ? "look: " + m.alias : "icons, \u00b0F"
+                color: Commons.Color.accent
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
+
+              UI.MachineCard {
+                width: 180
+                machine: m
+                link: svc.linkFor(m.id)
+                service: svc
+                foreground: Commons.Color.bar.text
+                fontFamily: Style.font.family
+                figureWidth: 44
+              }
+            }
+          }
+        }
+      }
+
+      SettingsFrame { id: settingsLinuxScene; x: 1460; y: 520; service: fakeSettingsLinux }
+      SettingsFrame { id: settingsMacScene; x: 1860; y: 520; service: fakeSettingsMac }
+
+      // README preview: the bar's right end above the docked sidebar, with
+      // one machine's settings open beside it.
       Rectangle {
         id: previewScene
-        x: 20; y: 860
-        width: 700; height: 680
+        x: 20; y: 1060
+        width: 720; height: 1000
         color: Commons.Color.background
 
         Rectangle {
@@ -184,38 +277,31 @@ Scope {
         }
 
         UI.VitalsView {
+          id: previewSidebar
           anchors.top: previewBar.bottom
           anchors.bottom: parent.bottom
           anchors.right: parent.right
           width: 200
-          service: fakeDock
+          service: fakePreview
           edge: "right"
         }
 
-        UI.VitalsView {
-          x: 40
+        SettingsFrame {
           anchors.top: previewBar.bottom
-          anchors.topMargin: 24
-          width: 200; height: 520
-          service: fakeEdit
-          border.width: 1
-          border.color: Util.alpha(Commons.Color.foreground, 0.15)
-        }
-
-        UI.VitalsView {
-          x: 264
-          anchors.top: previewBar.bottom
-          anchors.topMargin: 24
-          width: 200; height: 440
-          service: fakeEditor
-          border.width: 1
-          border.color: Util.alpha(Commons.Color.foreground, 0.15)
+          anchors.topMargin: Style.gapsOut
+          anchors.right: previewSidebar.left
+          anchors.rightMargin: Style.gapsOut
+          height: Math.min(implicitHeight, parent.height - harness.barSize - Style.gapsOut * 2)
+          clip: true
+          service: fakePreview
         }
       }
     }
 
     property var scenes: [
       ["dock", dockScene], ["dock-8-machines", manyScene], ["window", windowScene],
+      ["window-settings", windowSettingsScene], ["looks", looksScene],
+      ["settings-linux", settingsLinuxScene], ["settings-macos", settingsMacScene],
       ["edit-list", editScene], ["editor", editorScene], ["bar-widget", barScene],
       ["preview", previewScene]
     ]
