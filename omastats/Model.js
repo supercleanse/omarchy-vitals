@@ -951,40 +951,11 @@ function checkText(check) {
   return { title: String(c.id || "Check"), detail: "", fixLabel: "Fix" }
 }
 
-// Shell scripts behind each Fix button. Each runs in a terminal, says what it
-// will change, asks before changing it, and gets its names as positional
-// arguments, never spliced into the script.
-var FIX_SCRIPTS = {
-  "allow-discards": {
-    args: 1,
-    body: 'echo "Let TRIM pass through the encrypted volume $1 to the SSD."\n'
-      + 'echo "This runs: sudo cryptsetup refresh --allow-discards --persistent $1"\n'
-      + 'echo "The setting is stored in the LUKS header, so it lasts across reboots."\n'
-      + 'confirm || exit 1\n'
-      + 'sudo cryptsetup refresh --allow-discards --persistent "$1" || exit 1\n'
-      + 'echo "Trimming free space now:"\n'
-      + 'sudo fstrim -av\n'
-  },
-  "enable-fstrim": {
-    args: 0,
-    body: 'echo "Turn on the weekly TRIM of every mounted SSD."\n'
-      + 'echo "This runs: sudo systemctl enable --now fstrim.timer"\n'
-      + 'confirm || exit 1\n'
-      + 'sudo systemctl enable --now fstrim.timer\n'
-  },
-  "udisks-no-flush": {
-    args: 2,
-    body: 'conf=/etc/udisks2/mount_options.conf\n'
-      + 'echo "Mount the FAT drive $2 without flush from now on, so small writes are fast."\n'
-      + 'echo "This adds a section for it to $conf, then unmounts and mounts it again."\n'
-      + 'echo "Let any copy to it finish first. Afterwards, always eject it before unplugging."\n'
-      + 'confirm || exit 1\n'
-      + 'if ! grep -qsF "[/dev/disk/by-uuid/$1]" "$conf"; then\n'
-      + '  printf \'\\n# Added by OmaStats: mount this FAT drive without flush.\\n[/dev/disk/by-uuid/%s]\\nvfat_defaults=uid=$UID,gid=$GID,shortname=mixed,utf8=1,showexec\\n\' "$1" | sudo tee -a "$conf" >/dev/null || exit 1\n'
-      + 'fi\n'
-      + 'udisksctl unmount -b "$2" && udisksctl mount -b "$2"\n'
-  }
-}
+// Vitals edit: OmaStats' Fix buttons ran root-level scripts (cryptsetup, fstrim,
+// udisks config) on the local machine. Vitals shows any machine, never asks for
+// root, and would run them on the wrong host for a remote disk, so it ships no
+// fix scripts: fixCommand() returns null and no Fix button is shown.
+var FIX_SCRIPTS = {}
 
 var FIX_PRELUDE = 'confirm() { printf "Continue? [y/N] "; read -r answer; [ "$answer" = y ] || [ "$answer" = Y ]; }\n'
 var FIX_EPILOGUE = 'status=$?\necho\nif [ "$status" -eq 0 ]; then echo "Done."; else echo "Nothing changed, or it failed (status $status)."; fi\n'
