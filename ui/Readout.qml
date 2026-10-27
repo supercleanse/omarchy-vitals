@@ -20,6 +20,12 @@ Item {
   property color foreground: Commons.Color.foreground
   property string fontFamily: Style.font.family
   property real figureWidth: 40
+  // This readout's tab is the open detail panel for its machine.
+  property bool selected: false
+
+  // Clicking a readout opens (or closes) the machine's detail panel on this
+  // module's tab.
+  signal activated()
 
   readonly property string module: entry.module || "cpu"
   readonly property var def: Model.moduleDef(module)
@@ -169,6 +175,14 @@ Item {
 
   implicitHeight: module === "sensors" ? Math.max(Style.space(25), sensorFlow.implicitHeight) : Style.space(25)
   visible: sample !== null && (module !== "sensors" || sensorReadings.length > 0)
+
+  Rectangle {
+    anchors.fill: parent
+    anchors.leftMargin: -Style.space(4)
+    anchors.rightMargin: -Style.space(4)
+    radius: Style.cornerRadius
+    color: Util.alpha(root.foreground, root.selected ? 0.10 : (clickArea.containsMouse ? 0.06 : 0))
+  }
 
   RowLayout {
     anchors.fill: parent
@@ -352,5 +366,15 @@ Item {
       font.pixelSize: Style.font.icon
       renderType: Text.NativeRendering
     }
+  }
+
+  MouseArea {
+    id: clickArea
+    anchors.fill: parent
+    anchors.leftMargin: -Style.space(4)
+    anchors.rightMargin: -Style.space(4)
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
+    onClicked: root.activated()
   }
 }

@@ -27,7 +27,10 @@ ui/StackLabel.qml, ui/HistoryGraph.qml, ui/MirrorGraph.qml, ui/MiniRing.qml,
 ui/Card.qml, ui/SectionTitle.qml, the layout and controls of
 ui/MachineSettings.qml, and the module, look, formatting, sensor and palette
 helpers in Model.js are adapted from OmaStats
-(https://github.com/crmne/omastats), used under the MIT License:
+(https://github.com/crmne/omastats), used under the MIT License. The
+omastats/ directory holds OmaStats' panel pages, components and Model.js,
+copied from OmaStats 1.7.0 (commit 5a3ddee) with three marked edits; its own
+LICENSE file is kept there:
 
 Copyright (c) 2026 Carmine Paolino
 

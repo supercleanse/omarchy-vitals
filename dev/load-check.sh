@@ -98,6 +98,7 @@ fi
   done
 ) &
 ipc_pid=$!
+( sleep 12; ls "$work/runtime/vitals-ssh" 2>/dev/null | wc -l > "$work/sockets" ) &
 
 env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
   -u QT_QPA_PLATFORMTHEME -u QT_IM_MODULE -u GDK_BACKEND -u XDG_STATE_HOME \
@@ -112,9 +113,12 @@ env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION
   VITALS_OUT="$scratch" \
   VITALS_WAIT_MS="${VITALS_WAIT_MS:-14000}" \
   VITALS_MODULES="${VITALS_MODULES:-}" \
+  VITALS_DETAIL="${VITALS_DETAIL:-}" \
+  VITALS_DETAIL_STEP_MS="${VITALS_DETAIL_STEP_MS:-6000}" \
   timeout 90 qs -p "$work/config" 2>&1 | grep -v -e 'Failed to start IPC server' -e 'does not support setting window masks' || true
 
 wait "$ipc_pid" 2>/dev/null || true
 [[ -n ${edit_pid:-} ]] && wait "$edit_pid" 2>/dev/null || true
+echo "--- shared SSH control sockets while it ran: $(cat "$work/sockets" 2>/dev/null || echo none)"
 echo "--- files written under the scratch HOME"
 find "$home/.config/vitals" "$home/.local/state/vitals" -type f -print -exec cat {} \; 2>/dev/null || true

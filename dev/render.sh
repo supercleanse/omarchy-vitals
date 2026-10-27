@@ -70,6 +70,7 @@ else
   tag=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null || echo current)
 fi
 
+for set in main detail detail-mac; do
 env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
   -u QT_QPA_PLATFORMTHEME -u QT_IM_MODULE -u GDK_BACKEND \
   HOME="$render_home" \
@@ -83,6 +84,8 @@ env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY -u DBUS_SESSION
   VITALS_FAKE_DATA=1 \
   VITALS_OUT="$out" \
   VITALS_THEME_TAG="$tag" \
-  timeout 60 qs -p "$work/config" 2>&1 | grep -v -e 'Failed to start IPC server' -e 'does not support setting window masks' || true
+  VITALS_SET="$set" \
+  timeout 90 qs -p "$work/config" 2>&1 | grep -v -e 'Failed to start IPC server' -e 'does not support setting window masks' || true
+done
 
 ls -1 "$out"/*-"$tag".png

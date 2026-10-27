@@ -37,6 +37,14 @@ vitals_emit() {
   printf '%s\n' "$1" || exit 0
 }
 
+# The loop ends itself every six hours and asks to be restarted, so one whose
+# reader vanished without closing the connection (it happens behind some
+# SSH proxies) cannot run on forever. Vitals reconnects at once.
+vitals_lifetime() {
+  vitals_age=$((vitals_age + ${1%%.*} + 0))
+  if [ "$vitals_age" -ge 21600 ]; then vitals_emit '{"type":"renew"}'; exit 0; fi
+}
+
 vitals_fail() {
   vitals_emit "{\"type\":\"error\",\"message\":\"$(vitals_json_text "$1")\"}"
   exit 1
@@ -437,6 +445,7 @@ linux_main() {
 
   while :; do
     sleep "$interval" || exit 0
+    vitals_lifetime "$interval"
     linux_cpu
     linux_net
     linux_clock
@@ -619,6 +628,7 @@ darwin_main() {
     fi
     # shellcheck disable=SC2046
     set -- $(darwin_sample wait)
+    vitals_lifetime "$wait_s"
     [ $# -eq 18 ] || { sleep "$wait_s"; continue; }
     if [ "$want_bat" = 1 ]; then bat_fields="${10} ${11} ${12} ${13} ${14}"; fi
     # shellcheck disable=SC2086
@@ -664,6 +674,7 @@ main() {
   case $interval in
     ''|*[!0-9.]*|.*|*.*.*) interval=2 ;;
   esac
+  vitals_age=0
   extras=$(printf '%s' "${2:-}" | tr -cd 'a-z,')
   sensor_ids=$(printf '%s' "${3:-cpu}" | tr -cd 'A-Za-z0-9_.:/,-')
   export LC_ALL=C

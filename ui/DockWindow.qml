@@ -29,6 +29,10 @@ PanelWindow {
   // the sidebar never takes focus from the windows beside it.
   WlrLayershell.keyboardFocus: service && service.editor ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
+  // The popout beside it sizes itself to this.
+  onHeightChanged: if (service) service.dockHeight = height
+  Component.onCompleted: if (service) service.dockHeight = height
+
   VitalsView {
     anchors.fill: parent
     service: window.service

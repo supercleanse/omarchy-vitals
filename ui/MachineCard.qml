@@ -171,6 +171,13 @@ Item {
           foreground: root.foreground
           fontFamily: root.fontFamily
           figureWidth: root.figureWidth
+          selected: !!root.service && root.service.detailId === root.machine.id
+            && root.service.detailTab === Model.tabFor(modelData.module)
+          onActivated: {
+            if (!root.service) return
+            var top = root.mapToItem(null, 0, 0).y
+            root.service.toggleDetail(root.machine.id, modelData.module, top)
+          }
         }
       }
     }

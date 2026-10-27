@@ -75,7 +75,11 @@ eq(M.displayAlias({ id: 'local', alias: '' }, 'studio.local'), 'studio', 'local 
 // commands
 eq(M.localCommand('/p/s.sh', 2), ['/bin/sh', '/p/s.sh', '2', '', 'cpu'], 'local command')
 const rc = M.remoteCommand('/p/s.sh', 'studio-mini', 2)
-eq(rc.slice(0, 5), ['/bin/sh', '-c', 'f=$1; shift; exec ssh "$@" < "$f"', 'vitals-ssh', '/p/s.sh'], 'remote wrapper redirects the sampler into ssh')
+eq(rc.slice(0, 6), ['/bin/sh', '-c', 'f=$1; d=$2; shift 2; [ -z "$d" ] || mkdir -p -m 700 "$d"; exec ssh "$@" < "$f"', 'vitals-ssh', '/p/s.sh', ''], 'remote wrapper redirects the sampler into ssh')
+ok(!rc.includes('ControlMaster=auto'), 'no control socket without a runtime directory')
+const rcc = M.remoteCommand('/p/s.sh', 'studio-mini', 2, '', 'cpu', '/run/user/1000/vitals-ssh')
+ok(rcc.includes('ControlMaster=auto') && rcc.includes('ControlPath=/run/user/1000/vitals-ssh/%C') && rcc.includes('ControlPersist=no'), 'card sessions share a private control socket')
+eq(rcc[5], '/run/user/1000/vitals-ssh', 'the wrapper is told which directory to create')
 ok(rc.includes('BatchMode=yes') && rc.includes('ConnectTimeout=8') && rc.includes('ServerAliveInterval=10') && rc.includes('ServerAliveCountMax=2'), 'ssh options present')
 eq(rc.slice(rc.indexOf('--')), ['--', 'studio-mini', 'sh', '-s', '--', '2', '-', 'cpu'], 'destination follows -- and the remote runs sh -s')
 eq([1, 2, 3, 4, 5, 6, 9].map(M.backoffMs), [2000, 4000, 8000, 16000, 30000, 30000, 30000], 'backoff doubles up to 30 s')
@@ -90,6 +94,7 @@ eq(M.parseLine('{"type":"sample","cpu":250,"memUsed":99,"memTotal":10}').cpu, 10
 eq(M.parseLine('{"type":"sample","cpu":250,"memUsed":99,"memTotal":10}').memUsed, 10, 'used clamped to total')
 eq(M.parseLine('Welcome to the server!'), null, 'banner lines ignored')
 eq(M.parseLine('{bad json'), null, 'broken json ignored')
+eq(M.parseLine('{"type":"renew"}'), { type: 'renew' }, 'renewal line parsed')
 let h = M.emptyHistory()
 for (let i = 0; i < 10; i++) h = M.pushSample(h, s, 4)
 eq(h.cpuUser.length, 4, 'history capped')
@@ -172,6 +177,16 @@ let hh = M.pushSample(M.emptyHistory(), smp, 10)
 hh = M.pushSample(hh, smp, 10)
 eq([hh.gpu['0000:03:00.0'].length, hh.gpuMem['0000:03:00.0'][0], hh.diskRead.nvme0n1.length, hh.battery.length], [2, 25, 2, 2], 'histories for gpu, vram, disks and battery')
 eq(M.trimHistory(hh, 1).diskWrite.all.length, 1, 'keyed histories trimmed')
+
+// ---- detail panel
+eq(M.detailCommand('/d.sh', '', 2, 'memory', false), ['/bin/sh', '/d.sh', '2', 'memory', '-'], 'local detail command')
+const dc = M.detailCommand('/d.sh', 'studio-mini', 2, 'network', true, '/run/x')
+eq(dc.slice(-3), ['2', 'network', 'all'], 'remote detail command carries tab and process level')
+ok(dc.includes('ControlPath=/run/x/%C'), 'detail session rides the shared connection')
+eq(M.detailTabs({ caps: { gpu: false, disks: true, sensors: false, battery: false } }), ['cpu', 'memory', 'disks', 'network'], 'tabs only for what a desktop Mac reports')
+eq(M.detailTabs({ caps: { gpu: true, disks: true, sensors: true, battery: true } }), ['cpu', 'gpu', 'memory', 'disks', 'network', 'sensors', 'battery'], 'every tab on a laptop that has everything')
+eq(M.detailTabs({}), ['cpu', 'gpu', 'memory', 'disks', 'network', 'sensors', 'battery'], 'before the first hello every tab is offered')
+eq([M.tabFor('gpuMemory'), M.tabFor('disks'), M.tabFor('bogus')], ['gpu', 'disks', 'cpu'], 'readouts map to tabs')
 
 console.log('# ' + n + ' passed')
 JS

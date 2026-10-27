@@ -21,6 +21,18 @@ QtObject {
   property bool editing: false
   property var editor: null
   property string settingsId: ""
+  property string detailId: ""
+  property string detailTab: "cpu"
+  property bool detailAll: false
+  property real popoutY: 0
+  property real dockHeight: 0
+  readonly property string detailOs: detailId === "studio-mini" ? "macos" : "linux"
+  property FakeDetail detail: FakeDetail {
+    os: root.detailOs
+    tab: root.detailTab
+    link: root.linkFor(root.detailId)
+    themeColors: root.themeColors
+  }
   property string configError: ""
   property bool open: true
   property bool sampling: true
@@ -71,7 +83,11 @@ QtObject {
   }
   function closeEditor() { editor = null }
   function saveEditor(values) { return Model.validateHost(values.host) }
-  function openSettings(id) { settingsId = id }
+  function openSettings(id) { settingsId = id; detailId = "" }
+  function openDetail(id, tab, y) { detailId = id; detailTab = Model.tabFor(tab); settingsId = "" }
+  function toggleDetail(id, module, y) { if (detailId === id && detailTab === Model.tabFor(module)) detailId = ""; else openDetail(id, module, y) }
+  function closeDetail() { detailId = "" }
+  function setDetailTab(tab) { if (tab === "settings") openSettings(detailId); else detailTab = tab }
   function closeSettings() { settingsId = "" }
   function updateMachine(id, patch) { machines = Model.updateMachine(machines, id, patch) }
   function resetReadouts(id) { machines = Model.resetReadouts(machines, id) }

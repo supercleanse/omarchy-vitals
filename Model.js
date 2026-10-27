@@ -427,12 +427,49 @@ function localCommand(samplerPath, seconds, extras, sensorIds) {
   return ["/bin/sh", String(samplerPath), intervalArg(seconds), String(extras || ""), String(sensorIds || "cpu")]
 }
 
+// Card and detail sessions to one machine share a single SSH connection
+// through a private control socket (mode 700 directory under
+// $XDG_RUNTIME_DIR), so opening a detail panel skips the handshake. Without a
+// runtime directory every session connects on its own.
+function controlOptions(controlDir) {
+  if (!controlDir) return []
+  return ["-o", "ControlMaster=auto", "-o", "ControlPath=" + controlDir + "/%C", "-o", "ControlPersist=no"]
+}
+
+// The wrapper makes the control directory, then hands the sampler file to
+// ssh on stdin; every value travels as its own argument.
+var SSH_WRAPPER = "f=$1; d=$2; shift 2; [ -z \"$d\" ] || mkdir -p -m 700 \"$d\"; exec ssh \"$@\" < \"$f\""
+
+function sshPrefix(samplerPath, host, controlDir) {
+  return ["/bin/sh", "-c", SSH_WRAPPER, "vitals-ssh", String(samplerPath), String(controlDir || "")]
+    .concat(SSH_OPTIONS, controlOptions(controlDir), ["--", String(host), "sh", "-s", "--"])
+}
+
+// The detail sampler for one tab: sh vitals-detail.sh <interval> <tab> [all].
+function detailCommand(detailPath, host, seconds, tab, all, controlDir) {
+  var args = [intervalArg(seconds), String(tab || "cpu"), all ? "all" : "-"]
+  if (!host) return ["/bin/sh", String(detailPath)].concat(args)
+  return sshPrefix(detailPath, host, controlDir).concat(args)
+}
+
+// Detail panel tabs in OmaStats' order, only for what the machine reports.
+var DETAIL_TABS = ["cpu", "gpu", "memory", "disks", "network", "sensors", "battery"]
+
+function detailTabs(info) {
+  return DETAIL_TABS.filter(function(tab) { return moduleAvailable(tab, info) })
+}
+
+// The tab a card readout opens.
+function tabFor(module) {
+  if (module === "gpuMemory") return "gpu"
+  return DETAIL_TABS.indexOf(module) !== -1 ? module : "cpu"
+}
+
 // Remote: ssh runs `sh -s` on the far side and the sampler arrives on stdin,
 // so nothing is installed there. The small sh wrapper only redirects the
 // file into ssh's stdin; every value travels as its own argument.
-function remoteCommand(samplerPath, host, seconds, extras, sensorIds) {
-  var argv = ["/bin/sh", "-c", "f=$1; shift; exec ssh \"$@\" < \"$f\"", "vitals-ssh", String(samplerPath)]
-  return argv.concat(SSH_OPTIONS, ["--", String(host), "sh", "-s", "--", intervalArg(seconds),
+function remoteCommand(samplerPath, host, seconds, extras, sensorIds, controlDir) {
+  return sshPrefix(samplerPath, host, controlDir).concat([intervalArg(seconds),
     String(extras || "-"), String(sensorIds || "cpu")])
 }
 
@@ -671,6 +708,7 @@ function parseLine(line) {
     }
   }
   if (data.type === "error") return { type: "error", message: cleanText(data.message, 160) }
+  if (data.type === "renew") return { type: "renew" }
   return null
 }
 
@@ -1023,5 +1061,9 @@ if (typeof module !== "undefined") module.exports = {
   diskSpace: diskSpace,
   gpuSample: gpuSample,
   compactFreq: compactFreq,
-  clockText: clockText
+  clockText: clockText,
+  detailCommand: detailCommand,
+  detailTabs: detailTabs,
+  tabFor: tabFor,
+  controlOptions: controlOptions
 }

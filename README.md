@@ -10,10 +10,11 @@ and runs with the tools every Linux and macOS system already has.
 The readouts follow [OmaStats](https://github.com/crmne/omastats): the same
 modules, the same looks (graph, ring, figure, or a mix), stacked letter labels
 or icons, and colors taken from your Omarchy theme, so Vitals looks at home
-beside OmaStats in the bar. Each machine's settings page is modeled on OmaStats'
-own.
+beside OmaStats in the bar. Click any readout and OmaStats' own detail panel
+opens beside the sidebar for that machine, local or remote. Each machine's
+settings page is modeled on OmaStats' too.
 
-![The Vitals sidebar docked on the right, with one machine's settings open beside it](preview.png)
+![The Vitals sidebar docked on the right, with the CPU detail panel open beside it](preview.png)
 
 ## What it shows
 
@@ -112,6 +113,7 @@ rm -rf ~/.config/vitals ~/.local/state/vitals   # machine list and open/closed s
 | Refresh button in the sidebar | Reconnect any offline machine now |
 | Pencil button | Edit the machine list |
 | Gear on a card's header | Open that machine's settings |
+| Click a readout (CPU, GPU, MEM, DSK, NET, sensors, BAT) | Open that machine's detail panel on that tab; click it again to close |
 
 In edit mode each machine has a checkbox to switch it on or off, buttons to
 move it up or down, open its settings or remove it, and an **Add machine**
@@ -140,6 +142,40 @@ every readout until its first report says what it has.
 
 ![Settings for a Linux laptop and for a desktop Mac](dev/renders/settings-linux-matte-black.png)
 
+### The detail panel
+
+Clicking a readout opens the panel OmaStats shows when you click its bar
+readout, for that machine: the same tab strip, pages, cards, history graphs,
+ring gauges, legends and process lists (they are OmaStats' own QML, vendored
+under `omastats/`). The machine's name and system sit in the header, and the
+readout you clicked stays highlighted on its card. The tabs cover only what the
+machine reports, plus a gear that switches to the machine's settings. Click the
+same readout again, press Escape, or use ✕ to close it. The arrow keys move
+between tabs. Clicking a readout on another card switches the panel to that
+machine.
+
+In dock mode the panel opens beside the sidebar (to its left, or its right when
+the dock is on the left), level with the card you clicked and kept on screen.
+It shares one slot with the settings page, so only one is open at a time. In
+window mode it slides in over the card list inside the window instead, since a
+second window would be tiled and reshuffle your desktop. ✕ or Escape returns to
+the list.
+
+| Tab | Linux | macOS |
+|:--|:--|:--|
+| CPU | User/system history, per-core rings (performance and efficiency cores on hybrid CPUs), model, cores and threads, clock and temperature, load average, uptime, busiest processes | User/system history, model, cores and threads, load average, uptime, busiest processes. No per-core figures or CPU temperature: macOS gives those only to root |
+| GPU | Load and memory history per GPU, clock, temperature, power and fan where the driver reports them (AMD in full, NVIDIA through `nvidia-smi`, Intel clock only) | Apple GPU load history and the system memory it holds |
+| Memory | Used, apps, shared, cached, free, compressed (zram), swap, memory pressure, the processes holding the most | Used, apps (app plus wired), cached (file-backed), free, compressed, swap, the processes holding the most. No pressure figure |
+| Disks | Each volume with its drive and model (through partitions, LUKS and LVM), per-drive read/write and busy time, I/O pressure, and per-process traffic for your own processes | The startup volume's container and any external volumes, read/write activity |
+| Network | Each interface with its addresses, Wi-Fi network and signal, totals since boot, traffic history, and traffic per process for your own TCP connections | Each active interface with its addresses, totals since boot, traffic history, and traffic per process for every process (from `nettop`) |
+| Sensors | Every temperature and fan hwmon reports | The battery temperature (MacBooks); a Mac without one has no Sensors tab |
+| Battery | Charge and its history, health, capacity against design, cycles, power draw, voltage, adapter, time left, and the batteries of mice and other devices | Charge and its history, health, capacity against design, cycles, power draw, voltage, adapter, time left |
+
+Anything a machine does not report without root is left out of its panel, never
+filled in. The public IP lookup OmaStats offers is off: for a remote machine it
+would mean a web request from that machine, so the Network page shows local
+addresses only.
+
 ### IPC and keybinding
 
 ```sh
@@ -151,6 +187,7 @@ omarchy-shell supercleanse.vitals window    # switch to window mode and show it
 omarchy-shell supercleanse.vitals refresh   # reconnect anything offline, reread machines.json
 omarchy-shell supercleanse.vitals edit      # show in edit mode
 omarchy-shell supercleanse.vitals settings local   # open a machine's settings by id
+omarchy-shell supercleanse.vitals detail local cpu # open a machine's detail panel on a tab
 omarchy-shell supercleanse.vitals status    # JSON: every machine, its state and latest figures
 ```
 
@@ -167,7 +204,10 @@ o.bind("SUPER + SHIFT + M", "Vitals", "omarchy-shell supercleanse.vitals toggle"
 - **dock** (default). A layer-shell panel pinned to the left or right edge,
   below the bar. It reserves its width as an exclusive zone, so Hyprland tiles
   your windows beside it instead of under it. Like the bar, it is on every
-  workspace. It only takes keyboard focus while the add/edit form is open.
+  workspace. It only takes keyboard focus while the add/edit form is open. The
+  detail panel and the settings page open in a popout beside it that reserves
+  no space; like OmaStats' panel, it takes the keyboard briefly when it opens so
+  Escape and the arrow keys work straight away.
 - **window.** The same content in an ordinary window, which Hyprland tiles like
   any app. Its class is Quickshell's, `org.quickshell`, and its title is
   `Vitals`, for window rules:
@@ -336,6 +376,22 @@ marked **stale** after three missed samples.
   `extras` names the costlier readouts a machine has switched on (`gpu`,
   `disks`, `sensors`, `battery`) and `sensors` the sensor ids to read.
   Changing a machine's readouts restarts its sampler with the new list.
+- **Detail only while a panel is open.** Opening a detail panel starts a
+  second script, `sampler/vitals-detail.sh <interval> <tab> [all]`, for that
+  machine and the visible tab alone; switching tabs restarts it with the new
+  tab, expanding a process list adds `all`, and closing the panel stops it. It
+  prints OmaStats' own snapshot format, so the vendored pages draw it
+  unchanged, and the panel's graphs start from the card's history. Its first
+  report comes about half a second (Linux) or a second (macOS) after it starts.
+- **One SSH connection per machine.** The card and detail sessions share a
+  connection through a control socket in a private directory,
+  `$XDG_RUNTIME_DIR/vitals-ssh` (mode 700, `ControlMaster=auto`,
+  `ControlPersist=no`), so opening a panel or switching tabs pays no new
+  handshake. Without a runtime directory every session connects on its own.
+- **Loops end themselves.** A detail loop ends after 15 minutes and a card loop
+  after six hours, asking to be restarted; Vitals reconnects at once over the
+  shared connection. A loop whose reader vanished without closing the
+  connection (possible behind some SSH proxies) therefore cannot run forever.
 - **The sampler** is POSIX sh. It detects the OS with `uname`, prints a
   `hello` line (OS, hostname, core count, which readouts the machine has, and
   its GPUs, disks and sensors), then one JSON line per interval:
@@ -357,7 +413,11 @@ marked **stale** after three missed samples.
   | macOS | 30 to 47 ms | about 85 to 90 ms |
 
   At the default 2-second interval that is under 1% of one core on Linux and
-  about 2% (defaults) to 4.5% (everything) of one core on a Mac. On Linux the
+  about 2% (defaults) to 4.5% (everything) of one core on a Mac.
+
+  While a detail panel is open, its tab adds per sample: on Linux about 14 ms
+  (GPU) to 62 ms (CPU, Memory and Sensors, which read every process or every
+  hwmon file); on a Mac 60 to 100 ms. Closing the panel stops it. On Linux the
   readouts read sysfs and `/proc` with shell builtins; `df` runs every 30
   seconds and `nvidia-smi` only when an NVIDIA GPU is awake. On macOS each extra
   readout adds one `ioreg` call; disk space (`df`) is read every 30 seconds and
@@ -385,11 +445,13 @@ Run the checks. None of them opens a window on your desktop.
 dev/test-model.sh                     # unit tests for Model.js (needs node)
 dev/test-sampler.sh                   # run the sampler here and check its output
 dev/test-sampler.sh studio-mini       # ...and stream it to a remote too (read-only), every readout on
+dev/test-detail.sh studio-mini        # every detail tab, here and on a remote (read-only)
 dev/render.sh --fake-data             # render every view to dev/renders/*.png
 dev/render.sh --fake-data --theme tokyo-night
 dev/load-check.sh /tmp/vitals-check studio-mini   # load the real plugin and sample for a few seconds
 VITALS_MODULES=cpu,gpu,memory,disks,network,sensors,battery dev/load-check.sh /tmp/vitals-check studio-mini
 VITALS_EDIT_TEST=1 dev/load-check.sh /tmp/vitals-check   # edit machines.json from outside while it runs
+VITALS_DETAIL=local:cpu,studio-mini:network dev/load-check.sh /tmp/vitals-check studio-mini   # open detail panels in turn
 ```
 
 `dev/render.sh` runs a private Quickshell instance with
@@ -408,8 +470,12 @@ version 1 `machines.json`, so every run also checks the upgrade to version 2.
 checks each change is picked up. That PNG holds
 real host data, so the script refuses to write inside the repository.
 
+`dev/render.sh` also renders the detail panel beside the dock for a Linux and a
+macOS machine on every tab, and the window-mode panel.
+
 The docked sidebar's layer-shell behavior (the exclusive zone and tiling beside
-it) and the settings popout's placement beside it need a running compositor.
+it) and the popout's placement and keyboard focus beside it need a running
+compositor.
 Offscreen rendering can't show them, so check them on a live session.
 
 ## Credits
@@ -419,7 +485,10 @@ The look and several pieces are adapted from
 module set and looks, the settings page's layout and controls, the stacked
 letter label, the bar-history and mirrored graphs, the ring gauge, the card and
 section title, the byte, rate and temperature formatting, the sensor and GPU
-selection, and the way it picks a second graph hue from the theme. See
+selection, and the way it picks a second graph hue from the theme. The detail
+panel is OmaStats' panel itself: `omastats/` holds its pages, cards, graphs,
+gauges, legends, process list, tab strip and model unchanged except for three
+marked edits (`// Vitals:`) that hide a figure a machine did not report. See
 `LICENSE` for both notices.
 
 ## License

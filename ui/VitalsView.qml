@@ -28,6 +28,10 @@ Rectangle {
   readonly property var shown: machines.filter(function(m) { return m.enabled !== false })
   readonly property bool editing: !!service && service.editing
   readonly property bool settingsInline: inlineSettings && !!service && service.settingsId !== ""
+  // Window mode: a readout click slides the machine's detail panel in over
+  // the list, inside the window (a second window would be tiled and
+  // reshuffle the desktop). Close or Escape returns to the list.
+  readonly property bool detailInline: inlineSettings && !!service && service.detailId !== ""
   readonly property bool editorOpen: !!service && !!service.editor && !settingsInline
   readonly property int onlineCount: {
     if (!service) return 0
@@ -150,8 +154,26 @@ Rectangle {
     color: Util.alpha(root.foreground, 0.12)
   }
 
+  Loader {
+    id: inlineDetail
+    anchors.top: rule.bottom
+    anchors.bottom: parent.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    active: root.detailInline
+    visible: active
+    focus: active
+    sourceComponent: DetailPanel {
+      service: root.service
+      foreground: root.foreground
+      fontFamily: root.fontFamily
+      focus: true
+    }
+  }
+
   Flickable {
     id: flick
+    visible: !root.detailInline
     anchors.top: rule.bottom
     anchors.bottom: parent.bottom
     anchors.left: parent.left
@@ -292,7 +314,7 @@ Rectangle {
 
   // A thin scroll position marker, only while the list overflows.
   Rectangle {
-    visible: flick.interactive
+    visible: flick.interactive && !root.detailInline
     anchors.right: parent.right
     anchors.rightMargin: 2
     y: flick.y + flick.visibleArea.yPosition * flick.height

@@ -176,3 +176,125 @@ function macDesktop() {
     { id: "studio-mini", alias: "studio-mini", host: "studio-mini", enabled: true, modules: ["cpu", "memory", "gpu", "network"] }
   ]
 }
+
+// ---------------------------------------------------------------- detail
+//
+// Detail panel snapshots in OmaStats' schema, for the fictional laptop
+// (Linux) and studio-mini (macOS desktop). Addresses come from the
+// documentation ranges (192.0.2.0/24, 2001:db8::/32).
+
+function proc(name, pid, count, cpu, mem, read, write) {
+  return { name: name, pid: pid, count: count, cpu: cpu, mem: mem, read: read || 0, write: write || 0 }
+}
+
+var LINUX_PROCS = [
+  proc("firefox", 4211, 14, 18.4, 2.9 * GB), proc("code", 5120, 9, 11.2, 1.6 * GB), proc("node", 6342, 3, 7.9, 0.61 * GB),
+  proc("Xwayland", 1880, 1, 3.1, 0.18 * GB), proc("pipewire", 1702, 2, 1.4, 0.04 * GB), proc("postgres", 980, 7, 1.1, 0.33 * GB),
+  proc("Hyprland", 1650, 1, 0.9, 0.21 * GB), proc("quickshell", 1990, 1, 0.6, 0.27 * GB)
+]
+var MAC_PROCS = [
+  proc("Xcode", 812, 1, 22.7, 3.4 * GB), proc("WindowServer", 404, 1, 9.6, 0.61 * GB), proc("Safari", 1210, 6, 6.2, 1.9 * GB),
+  proc("Docker", 1533, 4, 3.8, 2.2 * GB), proc("Music", 1602, 1, 1.2, 0.29 * GB), proc("Finder", 690, 1, 0.4, 0.15 * GB),
+  proc("Mail", 1312, 1, 0.3, 0.33 * GB), proc("Terminal", 1450, 1, 0.3, 0.09 * GB)
+]
+
+function sortBy(list, key) { return list.slice().sort(function(a, b) { return b[key] - a[key] }) }
+
+function linuxDetail(tab) {
+  var cores = []
+  for (var i = 0; i < 16; i++) cores.push(i < 4 ? 18 + i * 6 : 4 + (i * 7) % 15)
+  var snap = {
+    type: "detail", tab: tab,
+    cpu: { user: 10.2, system: 3.8, iowait: 0.4, total: 14.0, load: [1.12, 0.94, 0.88], uptime: 302400,
+      model: "AMD Ryzen 7 7840U w/ Radeon 780M Graphics", coreCount: 8, threadCount: 16,
+      cores: cores, efficiency: [], mhz: 3120, maxMhz: 5100, temp: 52.5 },
+    mem: { total: 32 * GB, used: 18.6 * GB, available: 13.4 * GB, free: 3.1 * GB, cached: 9.2 * GB, shared: 0.9 * GB,
+      apps: 16.8 * GB, swapTotal: 8 * GB, swapUsed: 0.6 * GB, compressed: 1.4 * GB, compressedSize: 0.5 * GB,
+      pressureSome: 0.4, pressureFull: 0.1 },
+    net: { rx: 412000, tx: 38000 }
+  }
+  if (tab === "cpu" || tab === "memory") snap.procs = { total: 214, cpu: sortBy(LINUX_PROCS, "cpu"), mem: sortBy(LINUX_PROCS, "mem") }
+  if (tab === "network") {
+    snap.net.ifaces = [
+      { name: "wlan0", up: true, wireless: true, default: true, ipv4: ["192.0.2.24"], ipv6: ["2001:db8::24"], rx: 412000, tx: 38000,
+        rxTotal: 182 * GB, txTotal: 21 * GB, speed: 0, dbm: -54, ssid: "HomeNet" },
+      { name: "tailscale0", up: true, wireless: false, default: false, ipv4: ["100.64.0.7"], ipv6: [], rx: 2200, tx: 900,
+        rxTotal: 1.2 * GB, txTotal: 0.4 * GB, speed: 0 }
+    ]
+    snap.net.default = "wlan0"; snap.net.online = true
+    snap.net.procs = [
+      { name: "firefox", pid: 4211, count: 1, connections: 23, rx: 351000, tx: 22000 },
+      { name: "code", pid: 5120, count: 1, connections: 6, rx: 41000, tx: 9800 },
+      { name: "ssh", pid: 7012, count: 1, connections: 2, rx: 12000, tx: 4100 },
+      { name: "syncthing", pid: 1410, count: 1, connections: 4, rx: 6100, tx: 1900 }
+    ]
+  }
+  if (tab === "disks") {
+    snap.disks = { read: 1850000, write: 620000, pressureSome: 0.3, pressureFull: 0.1,
+      perDisk: { nvme0n1: { read: 1850000, write: 620000, busy: 6.5, id: "nvme0n1" } },
+      volumes: [
+        { device: "/dev/mapper/root", mount: "/", fstype: "btrfs", size: 1000 * GB, used: 412 * GB, avail: 588 * GB, disk: "nvme0n1", key: "nvme0n1", model: "Samsung SSD 990 PRO 1TB", rotational: false, removable: false, kind: "internal" },
+        { device: "/dev/nvme0n1p1", mount: "/boot", fstype: "vfat", size: 2 * GB, used: 0.12 * GB, avail: 1.88 * GB, disk: "nvme0n1", key: "nvme0n1", model: "Samsung SSD 990 PRO 1TB", rotational: false, removable: false, kind: "internal" }
+      ] }
+    snap.procs = { total: 61, io: [proc("firefox", 4211, 14, 0, 0, 1210000, 402000), proc("code", 5120, 9, 0, 0, 380000, 160000), proc("node", 6342, 3, 0, 0, 120000, 41000)] }
+  }
+  if (tab === "sensors") {
+    snap.cpuTemp = 52.5
+    snap.sensors = { gpuTemp: 51,
+      temps: [
+        { chip: "CPU", id: "k10temp/temp1", label: "Tctl", max: 100, value: 52.5 },
+        { chip: "GPU", id: "amdgpu/temp1", label: "edge", max: 100, value: 51 },
+        { chip: "NVMe", id: "nvme/temp1", label: "Composite", max: 82.8, value: 39.8 },
+        { chip: "Wi-Fi", id: "iwlwifi_1/temp1", label: "temp1", max: 0, value: 44 },
+        { chip: "ACPI", id: "acpitz/temp1", label: "temp1", max: 105, value: 47 },
+        { chip: "Battery", id: "BAT0/temp1", label: "temp", max: 0, value: 31.5 }
+      ],
+      fans: [{ chip: "ThinkPad", id: "thinkpad/fan1", label: "fan1", rpm: 2650 }] }
+  }
+  if (tab === "battery") {
+    snap.battery = { present: true, percent: 76, status: "Discharging", timeToEmpty: 214, timeToFull: 0,
+      energyNow: 39.6, energyFull: 52.1, energyDesign: 57.0, power: 11.1, voltage: 16.12, cycles: 212, health: 91.4,
+      acOnline: false, model: "5B10W51829", technology: "Li-poly",
+      peripherals: [{ name: "Wireless Mouse", percent: 70, status: "Discharging" }] }
+  }
+  if (tab === "gpu") {
+    var g = { id: "0000:03:00.0", name: "AMD GPU", vendor: "amd", integrated: true, util: 22, mhz: 1450, maxMhz: 2700,
+      temp: 51, power: 9, fan: null, memUsed: 2.5 * GB, memTotal: 8 * GB }
+    snap.gpus = [g]; snap.gpu = g
+  }
+  return snap
+}
+
+function macDetail(tab) {
+  var snap = {
+    type: "detail", tab: tab,
+    cpu: { user: 6.0, system: 3.0, total: 9.0, load: [2.41, 2.12, 1.98], uptime: 864000,
+      model: "Apple M4 Pro", coreCount: 14, threadCount: 14 },
+    mem: { total: 64 * GB, used: 39.5 * GB, apps: 33.7 * GB, cached: 18.2 * GB, free: 6.1 * GB,
+      compressed: 5.8 * GB, compressedSize: 2.1 * GB, swapTotal: 2 * GB, swapUsed: 0.4 * GB },
+    net: { rx: 128000, tx: 21000 }
+  }
+  if (tab === "cpu" || tab === "memory") snap.procs = { total: 486, cpu: sortBy(MAC_PROCS, "cpu"), mem: sortBy(MAC_PROCS, "mem") }
+  if (tab === "network") {
+    snap.net.ifaces = [
+      { name: "en0", up: true, wireless: false, default: true, ipv4: ["192.0.2.41"], ipv6: ["2001:db8::41"], rx: 128000, tx: 21000, rxTotal: 911 * GB, txTotal: 288 * GB, speed: 0 },
+      { name: "utun4", up: true, wireless: false, default: false, ipv4: ["100.64.0.12"], ipv6: [], rx: 900, tx: 500, rxTotal: 3.1 * GB, txTotal: 1.2 * GB, speed: 0 }
+    ]
+    snap.net.default = "en0"; snap.net.online = true; snap.net.procsAllProtocols = true
+    snap.net.procs = [
+      { name: "Safari", pid: 1210, count: 6, rx: 98000, tx: 9100 },
+      { name: "Docker", pid: 1533, count: 4, rx: 21000, tx: 8800 },
+      { name: "mDNSResponder", pid: 411, count: 1, rx: 1200, tx: 600 }
+    ]
+  }
+  if (tab === "disks") {
+    snap.disks = { read: 2100000, write: 410000, perDisk: {},
+      volumes: [{ device: "/dev/disk3s1s1", mount: "/", size: 994 * GB, used: 295 * GB, avail: 699 * GB, disk: "disk3", key: "disk3", rotational: false, removable: false, kind: "internal" }] }
+  }
+  if (tab === "gpu") {
+    var g = { id: "apple", name: "Apple M4 Pro GPU", vendor: "apple", integrated: true, util: 18, mhz: null, maxMhz: null,
+      temp: null, power: null, fan: null, memUsed: 3.2 * GB, memTotal: null }
+    snap.gpus = [g]; snap.gpu = g
+  }
+  return snap
+}

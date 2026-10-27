@@ -15,6 +15,11 @@ Scope {
   readonly property string outDir: Quickshell.env("VITALS_OUT") || "."
   readonly property string tag: Quickshell.env("VITALS_THEME_TAG") || "theme"
   readonly property int barSize: Style.bar.sizeHorizontal
+  // "main" renders the sidebar, settings and widget scenes; "detail" the
+  // detail panels beside the dock.
+  readonly property string sceneSet: Quickshell.env("VITALS_SET") || "main"
+  readonly property bool detailSet: sceneSet === "detail" || sceneSet === "detail-mac"
+  readonly property bool macSet: sceneSet === "detail-mac"
 
   FakeService { id: fakeDock }
   FakeService { id: fakeMany; set: "many" }
@@ -31,6 +36,20 @@ Scope {
   FakeService { id: fakeSettingsLinux; settingsId: "local" }
   FakeService { id: fakeSettingsMac; set: "mac"; settingsId: "studio-mini" }
   FakeService { id: fakePreview; settingsId: "local" }
+  FakeService { id: fdLinuxCpu; detailId: "local"; detailTab: "cpu"; popoutY: 44 }
+  FakeService { id: fdLinuxMem; detailId: "local"; detailTab: "memory"; popoutY: 44 }
+  FakeService { id: fdLinuxNet; detailId: "local"; detailTab: "network"; popoutY: 44 }
+  FakeService { id: fdLinuxDisks; detailId: "local"; detailTab: "disks"; popoutY: 44 }
+  FakeService { id: fdLinuxSensors; detailId: "local"; detailTab: "sensors"; popoutY: 44 }
+  FakeService { id: fdLinuxBattery; detailId: "local"; detailTab: "battery"; popoutY: 44 }
+  FakeService { id: fdLinuxGpu; detailId: "local"; detailTab: "gpu"; popoutY: 44 }
+  FakeService { id: fdMacCpu; detailId: "studio-mini"; detailTab: "cpu"; popoutY: 330 }
+  FakeService { id: fdMacMem; detailId: "studio-mini"; detailTab: "memory"; popoutY: 330 }
+  FakeService { id: fdMacGpu; detailId: "studio-mini"; detailTab: "gpu"; popoutY: 330 }
+  FakeService { id: fdMacNet; detailId: "studio-mini"; detailTab: "network"; popoutY: 330 }
+  FakeService { id: fdMacDisks; detailId: "studio-mini"; detailTab: "disks"; popoutY: 330 }
+  FakeService { id: fdWindow; detailId: "local"; detailTab: "cpu"; panelWidth: 400 }
+  FakeService { id: fdPreview; detailId: "local"; detailTab: "cpu"; popoutY: 44 }
   FakeService { id: fakeBarClosed; open: false; sampling: false }
   FakeService { id: fakeBarCount }
 
@@ -80,10 +99,71 @@ Scope {
     }
   }
 
+  // The dock with a detail panel open beside it, placed the way SidePopout
+  // places it: left of the sidebar, level with the clicked card, kept on
+  // screen.
+  component DetailScene: Rectangle {
+    id: scene
+    property var service: null
+    property bool withBar: false
+    readonly property real gap: Style.gapsOut
+    readonly property real barTop: withBar ? harness.barSize : 0
+    readonly property real available: height - barTop
+    width: 1180
+    height: 1000
+    color: Commons.Color.background
+
+    Rectangle {
+      visible: scene.withBar
+      anchors.left: parent.left
+      anchors.right: parent.right
+      height: harness.barSize
+      color: Commons.Color.bar.background
+
+      Plugin.VitalsWidget {
+        anchors.right: parent.right
+        anchors.rightMargin: 64
+        height: parent.height
+        bar: barOpen
+        settings: ({})
+      }
+    }
+
+    UI.VitalsView {
+      id: sidebar
+      y: scene.barTop
+      anchors.right: parent.right
+      width: 200
+      height: scene.available
+      service: scene.service
+      edge: "right"
+    }
+
+    Rectangle {
+      id: frame
+      readonly property real wanted: panel.contentHeight + 2
+      width: panel.implicitWidth + 2
+      height: Math.max(160, Math.min(wanted, scene.available - scene.gap * 2))
+      x: sidebar.x - scene.gap - width
+      y: scene.barTop + Math.max(scene.gap, Math.min(scene.service ? scene.service.popoutY : 0, scene.available - height - scene.gap))
+      radius: Style.cornerRadius
+      color: Commons.Color.popups.background
+      border.width: Math.max(1, Style.normalBorderWidth)
+      border.color: Commons.Color.popups.border
+
+      UI.DetailPanel {
+        id: panel
+        anchors.fill: parent
+        anchors.margins: 1
+        service: scene.service
+      }
+    }
+  }
+
   FloatingWindow {
     id: stage
-    implicitWidth: 2600
-    implicitHeight: 2400
+    implicitWidth: harness.detailSet ? 4820 : 2600
+    implicitHeight: harness.detailSet ? 2120 : 2400
     color: Commons.Color.background
     visible: true
 
@@ -96,7 +176,44 @@ Scope {
 
     Item {
       anchors.fill: parent
-      visible: harness.fakeData
+      visible: harness.fakeData && harness.detailSet
+
+      DetailScene { id: dLinuxCpu; x: 20; y: 20; visible: !harness.macSet; service: fdLinuxCpu }
+      DetailScene { id: dLinuxMem; x: 1220; y: 20; visible: !harness.macSet; service: fdLinuxMem }
+      DetailScene { id: dLinuxNet; x: 2420; y: 20; visible: !harness.macSet; service: fdLinuxNet }
+      DetailScene { id: dLinuxDisks; x: 3620; y: 20; visible: !harness.macSet; service: fdLinuxDisks }
+      DetailScene { id: dLinuxSensors; x: 20; y: 1060; visible: !harness.macSet; service: fdLinuxSensors }
+      DetailScene { id: dLinuxBattery; x: 1220; y: 1060; visible: !harness.macSet; service: fdLinuxBattery }
+      DetailScene { id: dLinuxGpu; x: 2420; y: 1060; visible: !harness.macSet; service: fdLinuxGpu }
+      DetailScene { id: dMacCpu; x: 20; y: 20; visible: harness.macSet; service: fdMacCpu }
+      DetailScene { id: dMacMem; x: 1220; y: 20; visible: harness.macSet; service: fdMacMem }
+      DetailScene { id: dMacGpu; x: 2420; y: 20; visible: harness.macSet; service: fdMacGpu }
+      DetailScene { id: dMacNet; x: 3620; y: 20; visible: harness.macSet; service: fdMacNet }
+      DetailScene { id: dMacDisks; x: 20; y: 1060; visible: harness.macSet; service: fdMacDisks }
+      DetailScene { id: dPreview; x: 1220; y: 1060; height: 1040; withBar: true; visible: harness.macSet; service: fdPreview }
+
+      Rectangle {
+        id: dWindow
+        visible: harness.macSet
+        x: 2420; y: 1060
+        width: 404; height: 1000
+        color: "transparent"
+        border.width: 2
+        border.color: Commons.Color.accent
+
+        UI.VitalsView {
+          anchors.fill: parent
+          anchors.margins: 2
+          service: fdWindow
+          showClose: false
+          inlineSettings: true
+        }
+      }
+    }
+
+    Item {
+      anchors.fill: parent
+      visible: harness.fakeData && !harness.detailSet
 
       UI.VitalsView {
         id: dockScene
@@ -298,12 +415,20 @@ Scope {
       }
     }
 
-    property var scenes: [
+    property var scenes: harness.macSet ? [
+      ["detail-macos-cpu", dMacCpu], ["detail-macos-memory", dMacMem], ["detail-macos-gpu", dMacGpu],
+      ["detail-macos-network", dMacNet], ["detail-macos-disks", dMacDisks],
+      ["detail-window", dWindow], ["preview", dPreview]
+    ] : harness.detailSet ? [
+      ["detail-linux-cpu", dLinuxCpu], ["detail-linux-memory", dLinuxMem], ["detail-linux-network", dLinuxNet],
+      ["detail-linux-disks", dLinuxDisks], ["detail-linux-sensors", dLinuxSensors], ["detail-linux-battery", dLinuxBattery],
+      ["detail-linux-gpu", dLinuxGpu]
+    ] : [
       ["dock", dockScene], ["dock-8-machines", manyScene], ["window", windowScene],
       ["window-settings", windowSettingsScene], ["looks", looksScene],
       ["settings-linux", settingsLinuxScene], ["settings-macos", settingsMacScene],
       ["edit-list", editScene], ["editor", editorScene], ["bar-widget", barScene],
-      ["preview", previewScene]
+      ["preview-settings", previewScene]
     ]
     property int pending: 0
 

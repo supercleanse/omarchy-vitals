@@ -94,6 +94,10 @@ Item {
   readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME") || home + "/.local/state") + "/vitals"
   readonly property string statePath: stateDir + "/state.json"
   readonly property string samplerPath: decodeURIComponent(String(Qt.resolvedUrl("sampler/vitals-sampler.sh")).replace(/^file:\/\//, ""))
+  readonly property string detailPath: decodeURIComponent(String(Qt.resolvedUrl("sampler/vitals-detail.sh")).replace(/^file:\/\//, ""))
+  // SSH control sockets live in a private runtime directory, so a detail
+  // session rides the card session's connection instead of a new handshake.
+  readonly property string controlDir: Quickshell.env("XDG_RUNTIME_DIR") ? Quickshell.env("XDG_RUNTIME_DIR") + "/vitals-ssh" : ""
 
   // ------------------------------------------------------------ state
 
@@ -103,6 +107,15 @@ Item {
   property var editor: null
   // The machine whose readout settings are open, or "".
   property string settingsId: ""
+  // The open detail panel: which machine and tab. It shares one slot with
+  // the settings page, so at most one of the two is open.
+  property string detailId: ""
+  property string detailTab: "cpu"
+  property bool detailAll: false
+  // Where the clicked card sits in the sidebar, so the popout lines up with
+  // it, and the sidebar's height, so it fits.
+  property real popoutY: 0
+  property real dockHeight: 0
   property var machines: Model.normalizeMachines(null)
   property string configError: ""
   property real clock: Date.now()
@@ -159,6 +172,7 @@ Item {
     editing = false
     editor = null
     settingsId = ""
+    detailId = ""
     return "ok"
   }
   function toggle() { return open ? hide() : show() }
@@ -205,12 +219,41 @@ Item {
   function openSettings(id) {
     if (!machineFor(id)) return "unknown machine"
     editor = null
+    detailId = ""
     settingsId = id
     open = true
     return "ok"
   }
 
   function closeSettings() { settingsId = "" }
+
+  function openDetail(id, tab, anchorY) {
+    if (!machineFor(id)) return "unknown machine"
+    editor = null
+    settingsId = ""
+    if (anchorY !== undefined && anchorY !== null) popoutY = anchorY
+    var tabs = Model.detailTabs(linkFor(id) ? linkFor(id).info : null)
+    var want = Model.tabFor(tab || "cpu")
+    detailTab = tabs.indexOf(want) !== -1 ? want : (tabs[0] || "cpu")
+    if (detailId !== id) detailAll = false
+    detailId = id
+    open = true
+    return "ok"
+  }
+
+  // A readout click: open that machine on that tab, or close the panel when
+  // the same readout is clicked again.
+  function toggleDetail(id, module, anchorY) {
+    if (detailId === id && detailTab === Model.tabFor(module)) { closeDetail(); return "ok" }
+    return openDetail(id, module, anchorY)
+  }
+
+  function closeDetail() { detailId = ""; detailAll = false }
+
+  function setDetailTab(tab) {
+    if (tab === "settings") { var id = detailId; closeDetail(); openSettings(id); return }
+    detailTab = Model.tabFor(tab)
+  }
 
   // Readout settings for one machine, merged in and saved. A null value
   // returns that key to the default.
@@ -316,7 +359,8 @@ Item {
       var obj = linkComponent.createObject(root, {
         machineId: wid,
         host: want[wid].host,
-        samplerPath: root.samplerPath
+        samplerPath: root.samplerPath,
+        controlDir: root.controlDir
       })
       if (!obj) continue
       obj.intervalSeconds = Qt.binding(function() { return root.intervalSeconds })
@@ -513,9 +557,29 @@ Item {
     onItemChanged: if (item) item.service = root
   }
 
+  // The detail panel's data: running only while a panel is open.
+  DetailSource {
+    id: detailSource
+    active: root.settingsReady && root.open && root.detailId !== "" && !!root.machineFor(root.detailId)
+    machineId: root.detailId
+    host: root.machineFor(root.detailId) ? root.machineFor(root.detailId).host : ""
+    detailPath: root.detailPath
+    controlDir: root.controlDir
+    intervalSeconds: root.intervalSeconds
+    historyLength: root.historyLength
+    tab: root.detailTab
+    allProcesses: root.detailAll
+    link: root.linkFor(root.detailId)
+    themeColors: root.themeColors
+  }
+
+  readonly property var detail: detailSource
+
+  // One popout beside the dock for both the settings page and the detail
+  // panel.
   LazyLoader {
-    active: root.settingsReady && root.open && root.mode === "dock" && root.settingsId !== ""
-    source: Qt.resolvedUrl("ui/SettingsPopout.qml")
+    active: root.settingsReady && root.open && root.mode === "dock" && (root.settingsId !== "" || root.detailId !== "")
+    source: Qt.resolvedUrl("ui/SidePopout.qml")
     onItemChanged: if (item) item.service = root
   }
 
@@ -545,6 +609,7 @@ Item {
     function refresh(): string { return root.refresh() }
     function edit(): string { root.setEditing(true); return root.show() }
     function settings(id: string): string { return root.openSettings(id || "local") }
+    function detail(id: string, tab: string): string { return root.openDetail(id || "local", tab || "cpu", null) }
     function status(): string { return JSON.stringify(root.summary()) }
   }
 }

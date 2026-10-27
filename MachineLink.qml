@@ -14,6 +14,8 @@ Item {
   property string machineId: ""
   property string host: ""
   property string samplerPath: ""
+  // Private directory for the shared SSH control socket, or "" for none.
+  property string controlDir: ""
   property real intervalSeconds: 2
   // Costlier modules to sample (gpu, disks, sensors, battery) and the sensor
   // ids to read, as the sampler's second and third arguments.
@@ -37,7 +39,7 @@ Item {
   readonly property bool hasData: sample !== null
   readonly property var command: isLocal
     ? Model.localCommand(samplerPath, intervalSeconds, extras, sensorIds)
-    : Model.remoteCommand(samplerPath, host, intervalSeconds, extras, sensorIds)
+    : Model.remoteCommand(samplerPath, host, intervalSeconds, extras, sensorIds, controlDir)
 
   function start() {
     if (destroying || !active || !samplerPath) return
@@ -85,6 +87,9 @@ Item {
   }
 
   property bool restartPending: false
+  // The sampler asked to be restarted (its periodic renewal): reconnect at
+  // once and keep showing the machine as it was.
+  property bool renewing: false
   // Set while Vitals ends a process on purpose, so whatever the dying ssh (or
   // its ProxyCommand) prints is not shown as the reason for a failure.
   property bool stopping: false
@@ -103,6 +108,7 @@ Item {
       reason = data.message
       return
     }
+    if (data.type === "renew") { renewing = true; return }
     sample = data
     history = Model.pushSample(history, data, historyLength)
     status = "online"
@@ -138,9 +144,12 @@ Item {
     onExited: function(code, exitStatus) {
       root.stopping = false
       if (root.destroying) return
-      if (root.restartPending) {
+      if (root.restartPending || root.renewing) {
+        var keep = root.renewing && root.status === "online"
         root.restartPending = false
+        root.renewing = false
         root.start()
+        if (keep) root.status = "online"
         return
       }
       if (!root.active) { root.status = "idle"; return }

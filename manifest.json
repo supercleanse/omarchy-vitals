@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "supercleanse.vitals",
   "name": "Vitals",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Blair Williams",
   "license": "MIT",
-  "description": "A compact multi-machine system monitor in the OmaStats style: CPU, GPU, memory, disks, network, sensors and battery for this machine and any others you can reach over SSH, chosen per machine, in a narrow sidebar docked to a screen edge or in its own window. Agentless: nothing is installed on the remote machines. Works with Linux and macOS remotes.",
+  "description": "A compact multi-machine system monitor in the OmaStats style: CPU, GPU, memory, disks, network, sensors and battery for this machine and any others you can reach over SSH, chosen per machine, in a narrow sidebar docked to a screen edge or in its own window. Click any readout for OmaStats' full detail panel for that machine. Agentless: nothing is installed on the remote machines, and nothing needs root. Works with Linux and macOS remotes.",
   "homepage": "https://github.com/SuperCleanse/omarchy-vitals",
   "kinds": [
     "service",
